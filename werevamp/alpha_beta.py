@@ -101,7 +101,7 @@ def alpha_beta(node: Node, depth: int, alpha: float, beta: float, maximizing_pla
             c = Node(child, parent=node)
             grandson, grand_v = alpha_beta(c, depth - 1, alpha, beta, False)
             if grand_v > v:
-                chosen_child, v = grandson, grand_v
+                chosen_child, v = c, grand_v
             if beta <= alpha:
                 return chosen_child, v
             alpha = max(alpha, v)
@@ -115,7 +115,7 @@ def alpha_beta(node: Node, depth: int, alpha: float, beta: float, maximizing_pla
             c = Node(child, parent=node)
             grandson, grand_v = alpha_beta(c, depth - 1, alpha, beta, True)
             if grand_v < v:
-                chosen_child, v = grandson, grand_v
+                chosen_child, v = c, grand_v
             if beta <= alpha:
                 return chosen_child, v
             beta = min(beta, v)
@@ -137,3 +137,5 @@ if __name__ == '__main__':
     game[2, 2] = (Game.Human, 10)
 
     decision, command = make_move(game, Game.Werewolf)
+    print(decision)
+    print(command)
