@@ -116,6 +116,7 @@ class Game(dict):
 if __name__ == "__main__":
     g = Game(10, 5)
     g[2, 3] = (Game.Vampire, 10)
+    g[6, 2] = (Game.Human, 6)
     print(g)
     print(g.vampire_pop())
     del g[2, 3]
