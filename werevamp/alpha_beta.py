@@ -3,6 +3,7 @@ import math
 from typing import Tuple, Iterator, List, Iterable
 from anytree import Node, RenderTree
 from copy import deepcopy
+from itertools import combinations, product, chain
 
 
 def print_tree(root):
@@ -14,6 +15,8 @@ def print_tree(root):
 
 
 class State:
+    move_vector = [(dx, dy) for dx in [-1, 0, 1] for dy in [-1, 0, 1]]
+
     def __init__(self, this_board: Game, next_player: int, this_move: List[Tuple[int, int, int, int, int]] = None):
         """
 
@@ -32,21 +35,54 @@ class State:
             next_turn = self.move_on_board(possible_move)
             yield State(next_turn, next_player, possible_move)
 
-    # to complete
-    def explore_possibilities(self) -> Iterator[List[Tuple[int, int, int, int, int]]]:
+    def explore_possibilities(self, max_divide: int = 3, min_troop: int = 3)\
+            -> Iterator[List[Tuple[int, int, int, int, int]]]:
+        """
+        Iterate on combinations of all possibilities of moves of each troop under param constraints
+        :param max_divide: maximum number one troop can be devided into troops
+        :param min_troop: minimum population one troop can have
+        :return: list of moves [depart x, depart y, population, arrive x, arrive y]
+        """
+        max_divide = min(max_divide, 9)
         army = self.game.werewolves() if self.next_player == Game.Werewolf else self.game.vampires()
-        for x, y, population in army:
-            for dx in [-1, 0, 1]:
-                for dy in [-1, 0, 1]:
-                    if dx == 0 and dy == 0:
-                        continue
-                    # for now just move the entire units
-                    if x + dx >= self.game.m or x + dx < 0 or y + dy >= self.game.n or y + dy < 0:
-                        continue
-                    # only consider moves here, do not consider result after random battle
-                    print([(x, y, population, x + dx, y + dy)])
-                    yield [(x, y, population, x + dx, y + dy)]
-                    # possibilities.append(new_state)
+        potential_of_whole_army = [[] for _ in range(len(army))]
+        for i, (x, y, population) in enumerate(army):
+            for num_divide in range(1, max_divide + 1):
+                if population // min_troop < num_divide:  # cut into too large troops
+                    continue
+                for division in self.__division(num_divide, min_troop, population):
+                    for vector_comb in combinations(State.move_vector, num_divide):
+                        possiblility = []
+                        for dx, dy in vector_comb:
+                            if x + dx >= self.game.m or x + dx < 0 or y + dy >= self.game.n or y + dy < 0:
+                                break
+                            if dx == 0 and dy == 0:
+                                possiblility.append("stay")
+                                # print("{0}'s potential move: {1} soldier stay still".format(
+                                #     self.next_player, division[len(possiblility)-1]))
+                            else:
+                                # only consider moves here, do not consider result after random battle
+                                possiblility.append((x, y, division[len(possiblility)], x + dx, y + dy))
+                                # print("{0}'s potential move: {1}".format(
+                                #     self.next_player, [(x, y, division[len(possiblility)-1], x + dx, y + dy)]))
+                        if len(possiblility) == num_divide:
+                            if "stay" in possiblility:
+                                possiblility.remove("stay")
+                            if possiblility:
+                                potential_of_whole_army[i].append(possiblility)
+        for num_moving in range(1, len(army) + 1):
+            for comb_possibility in combinations(potential_of_whole_army, num_moving):
+                for possible_move in product(*comb_possibility):
+                    yield list(chain(*possible_move))
+
+    def __division(self, num_divide, min_troop, population):
+        if num_divide == 1:
+            yield [population]
+        else:
+            for troop_pop in range(min_troop, population - min_troop * (num_divide - 1) + 1):
+                residual_troops = self.__division(num_divide - 1, min_troop, population - troop_pop)
+                for residual_troop in residual_troops:
+                    yield [troop_pop] + residual_troop
 
     # to complete
     def move_on_board(self, mov: List[Tuple[int, int, int, int, int]]) -> Game:
@@ -95,31 +131,31 @@ def alpha_beta(node: Node, depth: int, alpha: float, beta: float, maximizing_pla
     if maximizing_player:
         if state.win_draw_lose() != 0:
             return node, 1e9 * state.win_draw_lose()
-        v = -math.inf
+        score = -math.inf
         chosen_child = node
         for child in state.expand_tree():
             c = Node(child, parent=node)
-            grandson, grand_v = alpha_beta(c, depth - 1, alpha, beta, False)
-            if grand_v > v:
-                chosen_child, v = c, grand_v
+            _, potential_score = alpha_beta(c, depth - 1, alpha, beta, False)
+            if potential_score > score:
+                chosen_child, score = c, potential_score
             if beta <= alpha:
-                return chosen_child, v
-            alpha = max(alpha, v)
-        return chosen_child, v
+                return chosen_child, score
+            alpha = max(alpha, score)
+        return chosen_child, score
     else:
         if state.win_draw_lose() != 0:
             return node, -1e9 * state.win_draw_lose()
-        v = math.inf
+        score = math.inf
         chosen_child = node
         for child in state.expand_tree():
             c = Node(child, parent=node)
-            grandson, grand_v = alpha_beta(c, depth - 1, alpha, beta, True)
-            if grand_v < v:
-                chosen_child, v = c, grand_v
+            _, potential_score = alpha_beta(c, depth - 1, alpha, beta, True)
+            if potential_score < score:
+                chosen_child, score = c, potential_score
             if beta <= alpha:
-                return chosen_child, v
-            beta = min(beta, v)
-        return chosen_child, v
+                return chosen_child, score
+            beta = min(beta, score)
+        return chosen_child, score
 
 
 def make_move(init_game: Game, who_plays: int, depth: int = 2):
@@ -136,6 +172,11 @@ if __name__ == '__main__':
     game[4, 4] = (Game.Werewolf, 10)
     game[2, 2] = (Game.Human, 10)
 
-    decision, command = make_move(game, Game.Werewolf)
-    print(decision)
-    print(command)
+    s = State(game, 1)
+    for m in s.explore_possibilities():
+        print(m)
+        print(s.move_on_board(m))
+
+    # decision, command = make_move(game, Game.Werewolf)
+    # print(decision)
+    # print(command)
