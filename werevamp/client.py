@@ -1,16 +1,19 @@
 from socket import socket, AF_INET, SOCK_STREAM
 import struct
+import argparse, sys
+from game import Game
 
 class Client():
     def __init__(self):
         self.connectingSocket = socket(AF_INET, SOCK_STREAM)
         self.connectingSocket.setblocking(True)
+        self.game_state_init = dict()
 
-    def connect_to_server(self, ip, port, name = 'ConnectionTest'):
+    def intialize_game_state(self, ip, port, name = 'ConnectionTest'):
         self.connectingSocket.connect((ip, port))
-        connection_template = 'Connected to %s:%s with name %s'
-        print(connection_template % (ip, port, name))
-        return self.send_message(['NME', len(name), name])
+        print(f'Connected to {ip}:{port} with name {name}')
+        game_state_init = self.send_message(['NME', len(name), name])
+        return game_state_init
 
     def fetch_data(self, size, byte_header):
         recv = bytes()
@@ -37,7 +40,7 @@ class Client():
             action = switcher.get(msg_type, lambda: self.error)
             return action()
         else:
-            print("Encountered error processing message, expected: "+ expected +" but got "+msg_type)
+            print(f"Encountered error processing message, expected: {expected} but got {msg_type}")
 
     def send_message(self, payload):
         if payload[0]=="NME":
@@ -54,7 +57,8 @@ class Client():
 
     def set_message(self):
         n,m=self.fetch_data(2,"2B")
-        return [(n,m)]+self.get_message("HUM")
+        self.game_state_init['boardsize'] = (n,m)
+        return self.get_message("HUM")
 
     def hum_message(self):
         res=[]
@@ -68,16 +72,18 @@ class Client():
             else:
                 res.append((prev,h))
             count+=1
-        return [n]+res+self.get_message("HME")
+        self.game_state_init['house_coords'] = res
+        return self.get_message("HME")
 
     def hme_message(self):
         start_pos=tuple(self.fetch_data(2,"2B"))
-        return [start_pos]+ self.get_message('MAP')
+        self.game_state_init['starting_tile'] = start_pos
+        return self.get_message('MAP')
 
     def map_message(self):
         n=self.fetch_data(1,"1B")[0]
         commands=self.fetch_data(5*n,"{}B".format(5*n))
-        res=[]
+        res=dict()
         x=0
         y=0
         h=0
@@ -93,9 +99,12 @@ class Client():
             elif count%5==3:
                 v=c
             else:
-                res.append((x,y,h,v,c))
+                res[(x,y)] = (h,v,c)
             count+=1
-        return res
+        self.game_state_init['map_initialization'] = res
+        self.game_state_init['race'] = self._get_starting_race()
+        self._parse_game_state()
+        return self.game_state_init
 
     def upd_message(self):
         n=self.fetch_data(1,"1B")[0]
@@ -122,13 +131,79 @@ class Client():
 
     def end_message(self):
         print("Game over, resetting data . . .")
+        del self.game
+        del self.game_state_init
         return 1
 
     def bye_message(self):
         print("Connection closing, bye . . .")
+        del self.game
+        del self.game_state_init
         return 2
 
     def error(self):
         print('Undocumented error')
+        return 3
+    
+    def _get_starting_race(self):
+        mapping = self.game_state_init['map_initialization']
+        if mapping is None:
+            raise ValueError('Map is not initialized')
+        relevant_tile = mapping[self.game_state_init['starting_tile']]
+        race = None
+        for i, elt in enumerate(relevant_tile):
+            if elt > 0 and race is None:
+                race = i
+            elif elt > 0 and race:
+                raise ValueError('More than one race in one tile, should not happen.')
+        return race
+
+    def _parse_game_state(self):
+        def find_occupying_race(tile_list, mapping):
+            """
+            Returns the given occupying race of a tile based on Game terminology
+            Example:
+                Given a list (0, 3, 0), returns 2 as the tile is occupied by 3 vampires.
+            """
+            assert len(tile_list) == 3
+            for i, val in enumerate(tile_list):
+                if val > 0 : 
+                    return (mapping[i], val)
+
+        n,m = self.game_state_init['boardsize']
+        self.game = Game(n,m)
+        mapping = [Game.Human, Game.Vampire, Game.Werewolf]
+        self.playing_race = mapping[self.game_state_init['race']]
+        for key, value in self.game_state_init['map_initialization'].items():
+            self.game[key[1], key[0]] = find_occupying_race(value, mapping)
         return 0
 
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--port', help='Provide port for server connection')
+    parser.add_argument('--ip', help='Provide ip address for server connection')
+    parser.add_argument('--name', help='Player name')
+    args = parser.parse_args()
+    if args.port:
+        port = int(args.port)
+    else:
+        port = 5555
+    if args.ip:
+        ip = args.ip
+    else:
+        ip = "127.0.0.1"
+    if args.name:
+        name = args.name
+    else:
+        name = 'player'
+    
+    client = Client()
+    res = client.intialize_game_state(ip, port, name)
+    if res in (1,2,3):
+        print("error")
+    else:
+        print(res)
+        print(client.game)
+        print(client.playing_race)
