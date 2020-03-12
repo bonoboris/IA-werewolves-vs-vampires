@@ -92,20 +92,20 @@ class GameServer:
     def fight(self, p1, p2):
         index_1, number_1 = p1
         index_2, number_2 = p2
-        if index_1 ==0 and number_2 >= number_1:
+        if index_1 ==2 and number_2 >= number_1:
             return index_2, number_2+number_1
-        elif index_2 == 0 and number_1 >= number_2:
+        elif index_2 == 2 and number_1 >= number_2:
             return index_1, number_1+number_2
-        elif number_2>= 1.5*number_1 and index_2 !=0:
+        elif number_2>= 1.5*number_1 and index_2 !=2:
             return index_2, number_2
-        elif number_1 >= 1.5*number_2 and index_1 !=0:
+        elif number_1 >= 1.5*number_2 and index_1 !=2:
             return index_1, number_1
         else:
             return self.random_battle(p1, p2)
     
     def is_game_ended(self):
         if self.game.vampire_pop() ==0 or self.game.werewolf_pop() == 0:
-            winner = 1 if self.game.vampire_pop() ==0 else 2
+            winner = 1 if self.game.vampire_pop() ==0 else 0
             return True,winner
         return False,''
     
@@ -121,7 +121,7 @@ class GameServer:
             p = number_1/number_2 - 0.5
         if np.random.random() <= p:# attacker win
             n_surv = round(p*number_1)
-            if index_2 == 0:
+            if index_2 == 2:
                 n_conv = round(p*number_2)
             else:
                 n_conv = 0
