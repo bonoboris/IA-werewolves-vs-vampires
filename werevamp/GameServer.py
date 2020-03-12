@@ -5,26 +5,46 @@ Created on Thu Mar 12 12:21:31 2020
 @author: simed
 """
 from collections import defaultdict
-from game import Game
 import numpy as np
-
-initial_pop = {0 : [[(5,5),2],[(6,6),5]],
-               1 : [[(0,0),10]],
-               2 : [[(9,9),10]]}
-g = Game(10,10, initial_pop)
+import pygame
+import os
 
 class GameServer:
-    def __init__(self, game, player_1, player_2):
+    """
+    player_1 = vampire
+    player_2 = werewolf
+    """
+    def __init__(self, game, player_1, player_2, video=False):
         self.game = game
         self.players = [player_1, player_2]
         self.maxturns=25
+        self.size = (500,500)
+        self.cell_size = (self.size[0]/self.game.m, self.size[1]/self.game.n)
+        self.screen = pygame.display.set_mode(self.size)
+        self.videopath = 'D:/Ecole/3A/IA/super-secret/werevamp/videos'
+        self.n_img = 0
+        self.video = video
+        if video:
+            self.init_video()
+        
+        
+    def init_video(self):
+        pygame.init()
+        videos = os.listdir(self.videopath)
+        max_vid = max([int(v) for v in videos if not v.endswith('toc2')])
+        self.videopath = f'{self.videopath}/{max_vid+1}'
+        os.mkdir(self.videopath)
+        
+
         
         
     def launch(self):
         index_player = 0
+        self.save_img()
         for t in range(self.maxturns):
             self.play_turn(index_player)
             index_player = 1 if index_player ==0 else 0
+            self.save_img()
             ended, winner = self.is_game_ended()
             if ended:
                 print(f'{winner} won')
@@ -137,3 +157,31 @@ class GameServer:
         final_valid = [ c for c in temp_valid if (c[1] >=0 and c[0] >=0 and c[0]<self.game.m and c[1] < self.game.n)]
         return final_valid
                 
+    def save_img(self):
+        BLACK = (0, 0, 0)
+        WHITE = (255, 255, 255)
+        BLUE = (0, 0, 255)
+        GREEN = (0, 255, 0)
+        RED = (255, 0, 0)
+        font = pygame.font.SysFont('Calibri', 25, True, False)
+        self.screen.fill(WHITE)
+        for i in range(self.game.m+1):
+            pygame.draw.line(self.screen, BLACK, [i*self.cell_size[0], 0], [i*self.cell_size[0], self.size[1]], 5)
+        for i in range(self.game.n+1):
+            pygame.draw.line(self.screen, BLACK, [0,i*self.cell_size[1]], [self.size[0], i*self.cell_size[1]], 5)
+        for x,y,n in self.game.humans():
+            rect = [x*self.cell_size[1],y*self.cell_size[0], self.cell_size[1], self.cell_size[0]]
+            self.screen.fill(GREEN, rect=rect)
+            self.screen.blit(font.render(str(n),False,BLACK), [x*self.cell_size[1],y*self.cell_size[0]])
+        for x,y,n in self.game.vampires():
+            rect = [x*self.cell_size[1],y*self.cell_size[0], self.cell_size[1], self.cell_size[0]]
+            self.screen.fill(RED, rect=rect)
+            self.screen.blit(font.render(str(n),False,BLACK), [x*self.cell_size[1],y*self.cell_size[0]])
+        for x,y,n in self.game.werewolves():
+            rect = [x*self.cell_size[1],y*self.cell_size[0], self.cell_size[1], self.cell_size[0]]
+            self.screen.fill(BLUE, rect=rect)
+            self.screen.blit(font.render(str(n),False,BLACK), [x*self.cell_size[1],y*self.cell_size[0]])
+        pygame.image.save(self.screen, f'{self.videopath}/{self.n_img}.jpg')
+        self.n_img+=1
+        
+    
