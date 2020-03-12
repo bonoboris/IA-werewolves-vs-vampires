@@ -8,12 +8,12 @@ Created on Thu Mar 12 13:15:34 2020
 from GameServer import GameServer
 from game import Game
 
-initial_pop = {0 : [[(5,5),2],[(6,6),5]],
+initial_pop = {2 : [[(5,5),2],[(6,6),5]],
                1 : [[(0,0),10]],
-               2 : [[(9,9),10]]}
+               0 : [[(9,9),10]]}
 g = Game(10,10, initial_pop)
 
-gs = GameServer(g,'','')
+gs = GameServer(g,'','', True)
 
 
 # test get_valid_mov
@@ -30,25 +30,25 @@ if gs.is_game_ended()[0] == True:
 del g[(0,0)]
 if gs.is_game_ended()[0] != True:
     print('error, server returns game not ended while ended')
-if gs.is_game_ended()[1] != 2:
+if gs.is_game_ended()[1] != 0:
     print(' error in determining the winning team')
     
 # Testing battles
-results_wanted = [(1,15),(1,27),(2,10),(2,19)]
+results_wanted = [(1,25),(1,27),(0,10),(0,19)]
 results=[]
 results.append(gs.fight((1,15),(2,10)))
-results.append(gs.fight((1,15),(0,12)))
-results.append(gs.fight((2,10),(1,5)))
-results.append(gs.fight((2,10),(0,9)))
+results.append(gs.fight((1,15),(2,12)))
+results.append(gs.fight((0,10),(1,5)))
+results.append(gs.fight((2,9),(0,10)))
 if results != results_wanted:
     print(f'error in battles,received {results} instead of {results_wanted}')
 
 #testing movements authorisation
-initial_pop = {0 : [[(1,1),5]],
+initial_pop = {2 : [[(1,1),5]],
                1 : [[(0,0),10]],
-               2 : [[(2,2),10]]}
+               0 : [[(2,2),10]]}
 g = Game(3,3, initial_pop)
-gs = GameServer(g,'','')
+gs = GameServer(g,'','', True)
 
 tests = {'no movements' : [],
          'not our unit' : [[2,2,4,1,1]],
@@ -64,15 +64,25 @@ if gs.is_authorized(actions, 1) != True:
     print('server said action was false while True')
     
 # test game update
-
+gs.save_img()
 gs.update_game(actions, 1)
-gs.update_game([[2,2,10,2,1]],2)
+gs.save_img()
+gs.update_game([[2,2,10,2,1]],0)
+gs.save_img()
+
 gs.update_game([[0,1,5,1,1],[1,0,5,1,1]],1)
-gs.update_game([[2,1,5,2,2],[2,1,5,1,2]],2)
-if gs.is_authorized([[2,2,5,1,2],[1,2,5,1,1]],2):
+gs.save_img()
+
+gs.update_game([[2,1,5,2,2],[2,1,5,1,2]],0)
+gs.save_img()
+
+if gs.is_authorized([[2,2,5,1,2],[1,2,5,1,1]],0):
     print(' Authorized movements while it shouldnt be')
 gs.update_game([[1,1,15,1,2]],1)
-gs.update_game([[2,2,5,1,2]],2)
+gs.save_img()
+
+gs.update_game([[2,2,5,1,2]],0)
+gs.save_img()
 ended, winner = gs.is_game_ended()
 if not ended or winner != 1:
     print(' End game not properly detected')
