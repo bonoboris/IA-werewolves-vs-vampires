@@ -17,17 +17,24 @@ class Game(dict):
 
     # ------ Public Methods ------
 
-    def __init__(self, m: int, n: int):
+    def __init__(self, m: int, n: int, initial_pop : dict):
         """
         Args
         ----
             m: Number of rows
             n: Number of cols
+            initial_pop : a dictionnary in the form {index_population : [[(coord),number]]
+                                                     
         """
         self.m = m
         self.n = n
 
         self._populations = {0:0, 1:0, 2:0}
+        for kind, initial_data in initial_pop.items():
+            for group in initial_data:
+                coords = group[0]
+                n = group[1]
+                self.__setitem__(coords, (kind,n))
 
     def size(self) -> Tuple[int, int]:
         """Grid size."""
