@@ -11,9 +11,9 @@ class Game(dict):
     g = Game(10, 5)
     """
 
-    Human = 0
+    Human = 2
     Werewolf = 1
-    Vampire = 2
+    Vampire = 0
 
     # ------ Public Methods ------
 
