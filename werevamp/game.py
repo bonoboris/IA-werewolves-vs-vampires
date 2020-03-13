@@ -11,23 +11,30 @@ class Game(dict):
     g = Game(10, 5)
     """
 
-    Human = 0
+    Human = 2
     Werewolf = 1
-    Vampire = 2
+    Vampire = 0
 
     # ------ Public Methods ------
 
-    def __init__(self, m: int, n: int):
+    def __init__(self, m: int, n: int, initial_pop : dict = {}):
         """
         Args
         ----
             m: Number of rows
             n: Number of cols
+            initial_pop : a dictionnary in the form {index_population : [[(coord),number]]
+
         """
         self.m = m
         self.n = n
 
         self._populations = {0:0, 1:0, 2:0}
+        for kind, initial_data in initial_pop.items():
+            for group in initial_data:
+                coords = group[0]
+                n = group[1]
+                self.__setitem__(coords, (kind,n))
 
     def size(self) -> Tuple[int, int]:
         """Grid size."""
@@ -116,12 +123,11 @@ class Game(dict):
 if __name__ == "__main__":
     g = Game(10, 5)
     g[2, 3] = (Game.Vampire, 10)
-    g[6, 2] = (Game.Human, 6)
     print(g)
-    print(g.vampire_pop())
-    del g[2, 3]
-    print(g.vampire_pop())
-    print(g[2, 3])
-    print(g[3, 3])
-    print(g[2, 3])
+    print(g.vampires())
+    # del g[2, 3]
+    # print(g.vampire_pop())
+    # print(g[2, 3])
+    # print(g[3, 3])
+    # print(g[2, 3])
     # print(g[11, 3]) --> should raise IndexError

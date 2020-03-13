@@ -1,9 +1,17 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sun Mar 1 12:21:31 2020
+
+@author: Jiahao
+"""
 from game import Game
+from GameServer import GameServer
 import math
 from typing import Tuple, Iterator, List, Iterable
 from anytree import Node, RenderTree
 from copy import deepcopy
 from itertools import combinations, product, chain
+import numpy as np
 
 
 def print_tree(root):
@@ -33,9 +41,10 @@ class State:
 
         for possible_move in self.explore_possibilities():
             next_turn = self.move_on_board(possible_move)
-            yield State(next_turn, next_player, possible_move)
+            if next_turn is not None:
+                yield State(next_turn, next_player, possible_move)
 
-    def explore_possibilities(self, max_divide: int = 3, min_troop: int = 3)\
+    def explore_possibilities(self, max_divide: int = 3, min_troop: int = 3) \
             -> Iterator[List[Tuple[int, int, int, int, int]]]:
         """
         Iterate on combinations of all possibilities of moves of each troop under param constraints
@@ -62,6 +71,7 @@ class State:
                                 #     self.next_player, division[len(possiblility)-1]))
                             else:
                                 # only consider moves here, do not consider result after random battle
+                                # no chain prohibition neither
                                 possiblility.append((x, y, division[len(possiblility)], x + dx, y + dy))
                                 # print("{0}'s potential move: {1}".format(
                                 #     self.next_player, [(x, y, division[len(possiblility)-1], x + dx, y + dy)]))
@@ -86,27 +96,113 @@ class State:
 
     # to complete
     def move_on_board(self, mov: List[Tuple[int, int, int, int, int]]) -> Game:
-        # get board after random battle
+        # get board after random battle and chain prohibition
         new_state = deepcopy(self.game)
         if len(mov) == 0:
             return self.game
         player = None
+        troop_source = []
         for x, y, popu, xp, yp in mov:
             if player is None:
-                player = new_state[x, y][0]
+                player = self.game[x, y][0]
             else:
-                if player != new_state[x, y][0]:
-                    raise ValueError("Cannot move enemy's chess.")
+                if player == game.Human:
+                    print("Human is not player")
+                    return None
+                if player != self.game[x, y][0]:
+                    print("Cannot move enemy's chess.")
+                    return None
+            if (xp, yp) in troop_source:
+                print("A troop can only be source or target at the same time")
+                return None
+
             if new_state[x, y][1] - popu <= 0:
                 del new_state[x, y]
             else:
                 new_state[x, y] = (player, new_state[x, y][1] - popu)
-            new_state[xp, yp] = (player, popu)
+            if self.game[xp, yp] is not None:
+                if player != self.game[xp, yp][0]:
+                    new_state[xp, yp] = self.__fake_random_battle((player, popu), self.game[xp, yp])
+                else:
+                    new_state[xp, yp] = (player, popu + new_state[xp, yp][1])
+            else:
+                new_state[xp, yp] = (player, popu)
+            troop_source.append((x, y))
         return new_state
 
-    def heuristic(self) -> float:
+    def __fake_random_battle(self, attacker: Tuple[int, int], defender: Tuple[int, int], threshold: float = 0.6) \
+            -> Tuple[int, int]:
+        if defender[0] == Game.Human and attacker[1] >= defender[1]:
+            return attacker[0], attacker[1] + defender[1]
+        elif defender[0] != Game.Human and attacker[1] >= 1.5 * defender[1]:
+            return attacker[0], attacker[1]
+        else:
+            p = attacker[1] / (2 * defender[1]) if attacker[1] <= defender[1] else attacker[1] / defender[1] - 0.5
+            if p >= threshold:  # attacker win
+                n_surv = math.floor(p * attacker[1])
+                n_conv = math.floor(p * defender[1]) if defender[0] == Game.Human else 0
+                return attacker[0], n_surv + n_conv
+            else:  # attacker lose
+                n_surv = math.floor((1 - p) * defender[1])
+                return defender[0], n_surv
+
+    def __distance_to_human(self, army1: List[Tuple[int, int, int]], harmy: List[Tuple[int, int, int]], dmax: int)\
+            -> int:
+        try:
+            d_all = 0
+            for a in army1:
+                dmin = dmax
+                argmin = 0
+                for k, b in enumerate(harmy):
+                    if a[2] >= b[2]:
+                        d = self.__distance(a, b)
+                        if d <= dmin and b[2] >= harmy[argmin][2]:
+                            dmin = d
+                            argmin = k
+                d_all += (dmax - dmin) * harmy[argmin][2]
+        except:
+            d_all = 0
+        return d_all
+
+    def __distance(self, a: Tuple[int,int,int], b: Tuple[int,int,int]) -> int:
+        return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
+
+    def heuristic(self) -> int:
         # random battle remained to be considered
-        return 0.0
+        us = Game.Werewolf + Game.Vampire - self.next_player
+        our_army = self.game.vampires() if self.next_player == Game.Werewolf else self.game.werewolves()
+        their_army = self.game.vampires() if self.next_player == Game.Vampire else self.game.werewolves()
+        our_army = list(our_army)
+        their_army = list(their_army)
+        human_army = list(self.game.humans())
+
+        dmax = max(self.game.size())
+        heuristic = dmax * 30 * (self.game.vampire_pop() - self.game.werewolf_pop())  # us - them
+        if self.next_player == Game.Vampire:
+            heuristic = -heuristic
+        d_hum_us = self.__distance_to_human(our_army, human_army, dmax)
+        d_hum_them = self.__distance_to_human(their_army, human_army, dmax)
+        heuristic += 20 * (3 * d_hum_us - d_hum_them)
+        for u in our_army:
+            d_min = dmax
+            enemy_min = (0, 0, 0)
+            for enemy in their_army:
+                d = self.__distance(enemy, u)
+                if d < d_min:
+                    d_min = d
+                    enemy_min = enemy
+            winner1, n_survive1 = self.__fake_random_battle((us, u[2]), (self.next_player, enemy_min[2]))
+            winner2, n_survive2 = self.__fake_random_battle((self.next_player, enemy_min[2]), (us, u[2]))
+            f0 = 0
+            if (winner1, n_survive1) == (us, u[2]):
+                f0 = 1
+            elif (winner2, n_survive2) == (self.next_player, enemy_min[2]):
+                f0 = -1
+            f1 = 1 if winner1 == us else -1
+            f2 = 1 if winner2 == us else -1
+            heuristic += 5 * (f0 * 10 * u[2] + f1 * n_survive1 + f2 * n_survive2) * (dmax - d_min)
+
+        return heuristic
 
     def win_draw_lose(self) -> int:
         state, player = self.game, self.next_player
@@ -167,16 +263,15 @@ def make_move(init_game: Game, who_plays: int, depth: int = 2):
 
 
 if __name__ == '__main__':
-    game = Game(5, 5)
-    game[0, 0] = (Game.Vampire, 10)
-    game[4, 4] = (Game.Werewolf, 10)
-    game[2, 2] = (Game.Human, 10)
+    init_pop = {
+        Game.Human: [[(2, 2), 10]],
+        Game.Vampire: [[(1, 2), 10]],
+        Game.Werewolf: [[(3, 4), 3], [(3, 3), 3], [(4, 3), 4]]
+    }
+    game = Game(5, 5, init_pop)
 
-    s = State(game, 1)
-    for m in s.explore_possibilities():
-        print(m)
-        print(s.move_on_board(m))
+    # s = State(game, Game.Werewolf)
 
-    # decision, command = make_move(game, Game.Werewolf)
-    # print(decision)
-    # print(command)
+    decision, command = make_move(game, Game.Vampire)
+    print(decision)
+    print(command)
