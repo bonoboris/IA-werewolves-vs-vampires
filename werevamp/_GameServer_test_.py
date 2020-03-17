@@ -5,8 +5,8 @@ Created on Thu Mar 12 13:15:34 2020
 @author: simed
 """
 
-from GameServer import GameServer
-from game import Game
+from .GameServer import GameServer
+from .game import Game
 
 initial_pop = {2 : [[(5,5),2],[(6,6),5]],
                1 : [[(0,0),10]],

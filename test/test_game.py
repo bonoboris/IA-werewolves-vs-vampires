@@ -57,18 +57,18 @@ def test_populations():
     del g[1,1]
     assert g.populations() == {Game.Human: 0, Game.Werewolf: 5, Game.Vampire:10}
 
-def test_lists():
+def test_pops_iter():
     g = Game(10, 5)
     g[0,1] = (Game.Human, 5)
     g[0,2] = (Game.Vampire, 10)
     g[1,1] = (Game.Vampire, 5)
 
-    assert g.humans() == {(0,1,5)}
-    assert g.werewolves() == set()
-    assert g.vampires() == {(0,2,10), (1,1,5)}
+    assert set(g.humans()) == {(0,1,5)}
+    assert set(g.werewolves()) == set()
+    assert set(g.vampires()) == {(0,2,10), (1,1,5)}
 
     g[1,1] = (Game.Werewolf, 5)
 
-    assert g.humans() == {(0,1,5)}
-    assert g.werewolves() == {(1,1,5)}
-    assert g.vampires() == {(0,2,10)}
+    assert set(g.humans()) == {(0,1,5)}
+    assert set(g.werewolves()) == {(1,1,5)}
+    assert set(g.vampires()) == {(0,2,10)}
