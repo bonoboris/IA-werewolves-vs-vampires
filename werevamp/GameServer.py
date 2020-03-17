@@ -1,3 +1,4 @@
+
 # -*- coding: utf-8 -*-
 """
 Created on Thu Mar 12 12:21:31 2020
@@ -183,5 +184,3 @@ class GameServer:
             self.screen.blit(font.render(str(n),False,BLACK), [x*self.cell_size[1],y*self.cell_size[0]])
         pygame.image.save(self.screen, f'{self.videopath}/{self.n_img}.jpg')
         self.n_img+=1
-        
-    
