@@ -14,9 +14,32 @@ from scipy.special import softmax
 from .str_utils import ModuleSummary, TensorShapeRepr
 from .game import Action, Game
 from .utils import sigmoid
-from .cnn import BOARD_MAX_M, BOARD_MAX_N, Params, LinearBlock, LinearLayer, ChannelNorm, RadialBlock, ConstraintConv2d
+from .cnn import BOARD_MAX_M, BOARD_MAX_N, Params, LinearLayer, ChannelNorm, RadialBlock, ConstraintConv2d
 from .game_gen import SymGameGenerator
 
+
+class LinearBlock2(nn.Module):
+
+    def __init__(self, in_features, out_features, bias=False):
+        super().__init__()
+        self.linear = nn.Linear(in_features=in_features, out_features=out_features, bias=bias)
+        self.activation = nn.Sigmoid()
+    
+    def forward(self, inputs):
+        outputs = self.linear(inputs)
+        outputs = self.activation(outputs)
+        return outputs
+    
+    def get_params(self) -> Params:
+        return Params(
+            weight=self.linear.weight,
+            bias=self.linear.bias
+        )
+    
+    def set_params(self, value: Params) -> None:
+        self.linear.weight = nn.Parameter(value.weight, requires_grad = False)
+        if value.bias is not None:
+            self.linear.bias = nn.Parameter(value.bias, requires_grad=False)
 
 class OctoBlock2(nn.Module):
     def __init__(self, in_channels:int, out_channels_per_dir:int, kernel_size:int):
@@ -60,7 +83,7 @@ class ConvBlock2(nn.Module, ModuleSummary):
         super().__init__()
         self.radial1 = RadialBlock(3, 10, 13)
         self.octo = OctoBlock2(10, 3, 13)
-        self.radial2 = RadialBlock(3*8, 3, 13)
+        self.radial2 = RadialBlock(3*8, 2, 13)
 
     def forward(self, inputs:torch.Tensor, batch=False):
         if not batch:
@@ -98,21 +121,19 @@ class ConvBlock2(nn.Module, ModuleSummary):
 
 
 class Model2(nn.Module, ModuleSummary):
-    def __init__(self, im_size = (50, 50), num_ally_block=10, num_human_block=20, num_enemy_block=10, out_unit_block_features=5, out_hidden_features=20):
+
+    def __init__(self, im_size = (50, 50), out_unit_block_features=20, out_hidden_features=20):
         super().__init__()
-        self.num_ally_block = num_ally_block
-        self.num_enemy_block = num_enemy_block
-        self.num_human_block = num_human_block
         
         self.out_unit_block_features = out_unit_block_features
         self.out_hidden_features = out_hidden_features
 
         self.conv_block = ConvBlock2()
         conv_output_size = (self.conv_block.radial2.out_channels * 6 * 6)
-        self.ally_conv_block = LinearBlock(3 + conv_output_size, out_unit_block_features)
-        self.enemy_conv_block = LinearBlock(3 + conv_output_size, out_unit_block_features)
-        self.human_conv_block = LinearBlock(3 + conv_output_size, out_unit_block_features)
-        self.hidden = LinearBlock(out_unit_block_features * (num_ally_block + num_enemy_block + num_human_block), out_hidden_features)
+        self.ally_conv_block = LinearBlock2(3 + conv_output_size, out_unit_block_features)
+        self.enemy_conv_block = LinearBlock2(3 + conv_output_size, out_unit_block_features)
+        self.human_conv_block = LinearBlock2(3 + conv_output_size, out_unit_block_features)
+        self.hidden = LinearBlock2(out_unit_block_features * 3, out_hidden_features)
         self.pred_layer = LinearLayer(2 + 3 + out_hidden_features, out_features=1+8, bias=True)
     
     def get_params(self) -> Params:
@@ -139,23 +160,23 @@ class Model2(nn.Module, ModuleSummary):
         conv_output = self.conv_block(game_image).view(-1)
         # print("Conv out shape", conv_output.shape)
 
-        nblock = self.num_ally_block + self.num_enemy_block + self.num_human_block
         block_nfeat = self.out_unit_block_features 
-        hidden_input = torch.zeros(nblock * block_nfeat, dtype=torch.float32, device=self.device)
+        hidden_input = torch.zeros(3 * block_nfeat, dtype=torch.float32, device=self.device)
 
-        for i, unit in enumerate(ally_units):
+        for unit in ally_units:
             block_output = self.ally_conv_block(torch.cat((unit, conv_output)))
-            hidden_input[i*block_nfeat: (i+1)*block_nfeat] = block_output
+            hidden_input[0: block_nfeat] += block_output
+        hidden_input[0: block_nfeat] /= len(ally_units)
 
-        off = self.num_ally_block * block_nfeat
-        for i, unit in enumerate(enemy_units):
+        for unit in enemy_units:
             block_output = self.enemy_conv_block(torch.cat((unit, conv_output)))
-            hidden_input[off + i*block_nfeat: off + (i+1)*block_nfeat] = block_output
+            hidden_input[block_nfeat: 2*block_nfeat] += block_output
+        hidden_input[block_nfeat: block_nfeat] /= len(enemy_units)
 
-        off += self.num_enemy_block * block_nfeat
-        for i, unit in enumerate(human_units):
+        for unit in human_units:
             block_output = self.human_conv_block(torch.cat((unit, conv_output)))
-            hidden_input[off + i*block_nfeat: off + (i+1)*block_nfeat] = block_output
+            hidden_input[2*block_nfeat: 3*block_nfeat] += block_output
+        hidden_input[2*block_nfeat: 3*block_nfeat] /= len(enemy_units)
 
         hidden_output = self.hidden(hidden_input)
         outputs = list()
@@ -173,9 +194,14 @@ class Model2(nn.Module, ModuleSummary):
         inst = cls()
         inst.set_params(params)
         return inst
+    
+    @staticmethod
+    def get_player_class():
+        return PlayerCNN2
 
 
 class PlayerCNN2():
+    ModelClass = Model2
     def __init__(self, player:int, model:Optional[Model2] = None, cuda_device=None):
         self.player = player
         self.opponent = Game.Vampire if player == Game.Werewolf else Game.Werewolf
@@ -316,11 +342,14 @@ class PlayerCNN2():
             dj = -1
         return di, dj
 
+def rd_pop(npop):
+    return [Model2() for i in range(npop)]
+
+import copy
+def dcp_pop(pop):
+    return [copy.deepcopy(el) for el in pop]
 
 if __name__ == "__main__":
-    gg = SymGameGenerator(10, 10, players_pop=100, human_pop=100, human_spread=4)
+    gg = SymGameGenerator(human_spread=4)
     p = PlayerCNN2(Game.Vampire)
     print(p.play(gg()))
-    print(p.model.get_params().nelement())
-    print(p.model.get_params())
-    

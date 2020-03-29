@@ -50,7 +50,7 @@ def _debug_game(vamp_pos, wer_pos, human_pos):
 
 
 if __name__ == "__main__":
-    gg = SymGameGenerator(10, 10, human_spread=4, sym="r")
+    gg = SymGameGenerator(15, 15, players_pop=50, human_pop=50, human_spread=4, sym="x")
     # g = gg()
 
     # ug = _debug_game((0,5), (25,30), (12, 8))
@@ -59,9 +59,9 @@ if __name__ == "__main__":
     print(pop[0].conv_block.radial1.get_params())
 
     for i in range(len(pop)):
-        p1 = PlayerCNN(Game.Vampire, pop[i], True)
-        p2 = PlayerCNN(Game.Werewolf, pop[i], True)
-        plot_game(gg(), p1, p2, delay=0.5, num_max_turns=50)
+        p1 = PlayerCNN(Game.Vampire, pop[18], True)
+        p2 = PlayerCNN(Game.Werewolf, pop[18], True)
+        plot_game(gg(), p1, p2, delay=0.001, num_max_turns=50)
 
     # main(ug, p1, p2, delay=0.1)
         

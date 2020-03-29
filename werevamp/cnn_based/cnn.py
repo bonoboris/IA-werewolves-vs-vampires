@@ -18,6 +18,7 @@ from .utils import sigmoid
 BOARD_MAX_M = 50
 BOARD_MAX_N = 50
 
+
 class Params():
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
@@ -353,7 +354,7 @@ class ConvBlock(nn.Module, ModuleSummary):
     def __init__(self):
         super().__init__()
         self.radial1 = RadialBlock(3, 10, 13)
-        self.radial2 = RadialBlock(10, 3, 33)
+        self.radial2 = RadialBlock(10, 10, 33)
         self.octo = OctoBlock(10, 3, 13)
 
     def forward(self, inputs:torch.Tensor, batch=False):
@@ -437,6 +438,7 @@ class LinearBlock(nn.Module):
 
 
 class Model(nn.Module, ModuleSummary):
+
     def __init__(self, im_size = (50, 50), num_ally_block=10, num_human_block=20, num_enemy_block=10, out_unit_block_features=10, out_hidden_features=100):
         super().__init__()
         self.num_ally_block = num_ally_block
@@ -512,9 +514,14 @@ class Model(nn.Module, ModuleSummary):
         inst = cls()
         inst.set_params(params)
         return inst
+    
+    @staticmethod
+    def get_player_class():
+        return PlayerCNN
 
 
 class PlayerCNN():
+    ModelClass = Model
     def __init__(self, player:int, model:Optional[Model] = None, cuda_device=None):
         self.player = player
         self.opponent = Game.Vampire if player == Game.Werewolf else Game.Werewolf

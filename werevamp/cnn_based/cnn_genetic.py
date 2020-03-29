@@ -1,8 +1,10 @@
-from typing import Tuple, Union, Sequence
+from typing import Tuple, Union, Sequence, Callable, Dict
 from copy import copy, deepcopy
 import random as rd
 from os import path
 from time import time
+import threading
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
 import torch
 import numpy as np
@@ -10,6 +12,7 @@ import tqdm
 from tabulate import tabulate
 
 from .cnn import Model, Params, PlayerCNN
+from .cnn2 import Model2, PlayerCNN2
 from .game import Game, GameRunner
 from .game_gen import GameGenerator, SymGameGenerator
 
@@ -75,7 +78,7 @@ def crossover(models, weights=None, granularity="coarse") -> Model:
             for k in g:
                 ks = k.split(".")
                 deep_set(child_params, ks, deep_get(p, ks))
-    return Model.from_params(child_params)
+    return models[0].__class__.from_params(child_params)
 
 
 def mutate(model: Model, mutation_rate:float, group_mutation_rate:float) -> Model:
@@ -97,24 +100,30 @@ def mutate(model: Model, mutation_rate:float, group_mutation_rate:float) -> Mode
             continue
         else:
             for k in g:
+                if k.startswith("conv_block"):
+                    lims = (-1.,1.)
+                else:
+                    lims = "auto"
                 ks = k.split(".")
                 sub_param = deep_get(params, ks)
                 sub_param = _mutatate(sub_param, mutation_rate)
                 deep_set(params, ks, sub_param)
     
-    return Model.from_params(params) 
+    return model.__class__.from_params(params) 
 
 
-def _mutatate(params: Union[Params, torch.Tensor], mutation_rate: float):
+def _mutatate(params: Union[Params, torch.Tensor], mutation_rate: float, lims:Tuple[float, float] = (-1., 1.)):
     if isinstance(params, Params):
         for k, v in vars(params).items():
-            params[k] = _mutatate(v, mutation_rate)
+            params[k] = _mutatate(v, mutation_rate, lims=lims)
     elif isinstance(params, torch.Tensor):
         flat = params.view(-1)
         nb_el = len(flat)
+        if isinstance(lims, str) and lims == "auto":
+            lims = (-5/nb_el, 5/nb_el) 
         nb_mut = round(float(nb_el * mutation_rate))
         mut_idxs = rd.sample(range(nb_el), nb_mut)
-        mut_val = torch.empty(nb_mut).uniform_(-1, 1)
+        mut_val = torch.empty(nb_mut).uniform_(*lims)
         for i, v in zip(mut_idxs, mut_val):
             flat[i] = v
 
@@ -150,8 +159,8 @@ def run_multiple_games(game_gen, p1, p2, ngames, num_max_turns):
     return results
 
 
-def rd_population(Npop):
-    return [Model() for _ in range(Npop)]
+def rd_population(npop, klass=Model):
+    return [klass() for _ in range(npop)]
 
 
 def save_generation(num, population):
@@ -179,14 +188,16 @@ def get_fitness(scores):
     return scores
 
 
-def evolution(game_gen, ngames, max_turns, num_generation, population,
-              num_parent=5, mutation_rate=0.1, group_mutation_rate=0.5, cuda_device=True):
+def evolution(game_gen, ngames, max_turns, num_generation, population, num_parent=5,
+              mutation_rate=0.1, group_mutation_rate=0.5, cuda_device=True, njobs=1):
+
     n_pop = len(population)
     for gen in range(1, num_generation + 1):
         print(f"Starting match for generation {gen}")
         score_list = np.zeros(n_pop, dtype=int)
+        PlayerClass = population[0].get_player_class()
         tbar = tqdm.tqdm(total=ngames*n_pop*(n_pop-1)//2, unit="game")
-        players = [PlayerCNN(Game.Vampire, population[k], cuda_device) for k in range(n_pop)]
+        players = [PlayerClass(Game.Vampire, population[k], cuda_device) for k in range(n_pop)]
         for i in range(n_pop):
             for j in range(i + 1, n_pop): 
                 players[i].player = Game.Vampire
@@ -208,15 +219,79 @@ def evolution(game_gen, ngames, max_turns, num_generation, population,
         save_generation(gen, population)
 
 
+def _evolution(game_gen, pvamp, pwere, ngames, max_turns) -> Dict:
+    pvamp.player = Game.Vampire
+    pwere.player = Game.Werewolf
+    if rd.randint(0, 1):
+        res = run_multiple_games(game_gen, pvamp, pwere, ngames, max_turns)
+    else:
+        res = run_multiple_games(game_gen, pwere, pvamp, ngames, max_turns)
+    return score_game(res)
+
+
+class EvolutionFactory():
+    def __init__(self, game_gen, ngames, max_turns):
+        self.game_gen = game_gen
+        self.ngames = ngames
+        self.max_turns = max_turns
+    
+    def __call__(self, ps):
+        return _evolution(self.game_gen, ps[0], ps[1], self.ngames, self.max_turns)
+
+
+def split_n(seq, n):
+    k, m = divmod(len(seq), n)
+    return (seq[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in xrange(n))
+
+
+def evolution_mt(game_gen, ngames, max_turns, num_generation, population, num_parent=5,
+                mutation_rate=0.1, group_mutation_rate=0.5, cuda_device=False, njobs=8):
+    
+    n_pop = len(population)
+    with ThreadPoolExecutor(max_workers=njobs) as executor:
+        for gen in range(1, num_generation + 1):
+            print(f"Starting games for generation {gen}")
+            score_list = np.zeros(n_pop, dtype=int)
+            PlayerClass = population[0].get_player_class()
+            players = [PlayerClass(Game.Vampire, population[k], cuda_device) for k in range(n_pop)]
+            players_pairs = [(players[i], players[j]) for i in range(n_pop) for j in range(i)]
+            rungame_fct = EvolutionFactory(game_gen, ngames, max_turns)
+            t0 = time()
+            results = list(executor.map(rungame_fct, players_pairs, chunksize=n_pop//2))
+            t1 = time()
+            print(f"Finished games in {t1-t0:.2f} s [av. {len(players_pairs) * ngames / (t1 - t0):.2f} games/s]")
+            k = 0
+            for i in range(n_pop):
+                for j in range(i):
+                    score_list[i] += results[k][Game.Vampire]
+                    score_list[j] += results[k][Game.Werewolf]
+                    k += 1
+            print("Scores")
+            print(score_list)
+            print("Starting seeding next generation")
+            t0 = time()
+            fitness = get_fitness(score_list)
+            population = evolve(population, fitness, num_parent, mutation_rate, group_mutation_rate)
+            save_generation(gen, population)
+            t1 = time()
+            print(f"Finished seeding next generation in {t1-t0:.2f} s")
+
+
+def load_gen(num):
+    fpath = path.join(path.dirname(path.relpath(__file__)), f"data/gen{num}.pt")
+    return torch.load(fpath)
+
 if __name__ == "__main__":
     gg = SymGameGenerator(15, 15, 50, 50, 4, sym='r')
-    pop = rd_population(20)
+    pop = rd_population(5, klass=Model2)
     save_generation(0, pop)
 
-    evolution(
+    evolution_mt(
         game_gen=gg,
         ngames=6,
         max_turns=50,
         num_generation=20,
-        population=pop
+        population=pop,
+        cuda_device=False,
+        njobs=8
     )

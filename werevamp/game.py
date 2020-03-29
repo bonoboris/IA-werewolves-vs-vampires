@@ -1,7 +1,7 @@
 import copy
 from collections import defaultdict
 from numbers import Integral
-from typing import Tuple, Dict, Iterator, NamedTuple, Optional, Union, List, Mapping
+from typing import Tuple, Dict, Iterator, NamedTuple, Optional, Union, List, Mapping, Optional
 from time import sleep, time
 
 import numpy as np
@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 import matplotlib as mpl
 
 from .str_utils import SimpleRepr
-from .utils import dist
+from .utils import dist, Coords
 
 
 class Action(NamedTuple, SimpleRepr):
@@ -57,8 +57,8 @@ class Game(dict):
                 coords = group[0]
                 n = group[1]
                 self.__setitem__(coords, (kind,n))
-        
-    def size(self) -> Tuple[int, int]:
+
+    def size(self) -> Coords:
         """Grid size."""
         return self.m, self.n
 
@@ -107,6 +107,9 @@ class Game(dict):
         elif self.werewolf_pop() == 0: ret = Game.Vampire
         return ret
 
+    @staticmethod
+    def enemy_faction(ally_faction: int) ->  int:
+        return Game.Vampire if ally_faction == Game.Werewolf else Game.Werewolf
     # ------------
 
     def to_matrix(self) -> np.ndarray:
@@ -184,6 +187,8 @@ class Game(dict):
                 dest_ty, dest_num = dest_val
                 if dest_ty == self.Human:
                     iswin, new_num = self.fight_human(num, dest_num)
+                elif dest_ty == kind:
+                    iswin, new_num = True, dest_num + num  # hackish
                 else:
                     iswin, new_num = self.fight_nonhuman(num, dest_num)
                 new_kind = kind if iswin else dest_ty
@@ -245,7 +250,7 @@ class Game(dict):
 
     # ------ List method ------
 
-    def __getitem__(self, key: Tuple[int, int]):
+    def __getitem__(self, key: Coords):
         """Returns (type, number) at coords `key`=(i, j) or None of the case is empty."""
         i, j = self._pair_int(key)
         self._check_coords(i, j)
@@ -254,7 +259,7 @@ class Game(dict):
         else:
             return None
     
-    def __setitem__(self, key: Tuple[int, int], value: Tuple[int, int]):
+    def __setitem__(self, key: Coords, value: Tuple[int, int]):
         """Set the `value`=(type, number) at coords `key`=(i,j)."""
         # Validate args
         i, j = self._pair_int(key)
@@ -274,7 +279,7 @@ class Game(dict):
         # Set value
         return super().__setitem__(key, value)
     
-    def __delitem__(self, key: Tuple[int, int]):
+    def __delitem__(self, key: Coords):
         """Delete the units at coords `key`=(i,j) if any."""
         i, j = self._pair_int(key)
         self._check_coords(i, j)
@@ -300,75 +305,60 @@ class Game(dict):
         return i, j
 
 class GamePlotter():
-    def __init__(self, game):
+    def __init__(self, game: Game = None, influence:Optional = None):
         plt.ion()
         self.m, self.n = game.size()
         self.fig: plt.Figure = None
         self.ax: plt.Axes = None
         self.fig, self.ax = plt.subplots()
-        self.im: mpl.image.AxesImage = self.ax.imshow(self.get_rgb(game))
-        self.update_text(game)
+        self.im: Optional[mpl.image.AxesImage] = None
         self.fig.tight_layout()
-        self.fig.canvas.draw()
-    plt.pause(0.001)
+        self._first(game, influence)
 
-    def update(self, game):
-        self.im.set_data(self.get_rgb(game))
-        self.update_text(game)
+    def update(self, game: Game, influence: Optional = None) -> None:
+        if self.im is None:
+            self._first(game, influence)
+        else:
+            self._redraw(game, influence)
         self.fig.canvas.draw()
         plt.pause(0.001)
-        pass
 
+    def _first(self, game: Game, influence=None):
+        if influence is None:
+            self.im = self.ax.imshow(self.get_game_rgb(game))
+            for (i, j), (_,num) in game.items():
+                text = self.ax.text(j, i, num, ha="center", va="center", color="w")
+        else:
+            self.im = self.ax.imshow(influence)
+            self.ax.texts.clear()
+            for i, j, num in game.humans():
+                text = self.ax.text(j, i, num, ha="center", va="center", color="w", bbox=dict(facecolor='b', alpha=0.5))
+            for i, j, num in game.vampires():
+                text = self.ax.text(j, i, num, ha="center", va="center", color="w", bbox=dict(facecolor='r', alpha=0.5))
+            for i, j, num in game.werewolves():
+                text = self.ax.text(j, i, num, ha="center", va="center", color="w", bbox=dict(facecolor='g', alpha=0.5))            
+
+    def _redraw(self, game: Game, influence=None):
+        if influence is None:
+            self.im.set_data(self.get_game_rgb(game))
+            self.ax.texts.clear()
+            for (i, j), (_,num) in game.items():
+                text = self.ax.text(j, i, num, ha="center", va="center", color="w")
+        
+        else:
+            self.im.set_data(influence)
+            self.ax.texts.clear()
+            for i, j, num in game.humans():
+                text = self.ax.text(j, i, num, ha="center", va="center", color="w", bbox=dict(facecolor='b', alpha=0.5))
+            for i, j, num in game.vampires():
+                text = self.ax.text(j, i, num, ha="center", va="center", color="w", bbox=dict(facecolor='r', alpha=0.5))
+            for i, j, num in game.werewolves():
+                text = self.ax.text(j, i, num, ha="center", va="center", color="w", bbox=dict(facecolor='g', alpha=0.5))
     
     @staticmethod
-    def get_rgb(game: Game):
+    def get_game_rgb(game: Game):
         return np.where(game.to_matrix() > 0, 122, 0)
-    
-    def update_text(self, game: Game):
-        self.ax.texts.clear()
-        for (i, j), (_,num) in game.items():
-            text = self.ax.text(j, i, num, ha="center", va="center", color="w")
 
-
-class GameRunner():
-    def runit(self, game:Game, p1, p2, p1_first:bool=True, max_num_turns=1000):
-        nturn = 0
-        turn = p1_first
-
-        def next_actions():
-            if turn: return p1.player, p1.play(game)
-            else: return p2.player, p2.play(game)
-
-        while game.winner() is None and nturn < max_num_turns:
-            kind, actions = next_actions()
-            game.register_actions(kind, actions)
-            turn = not turn
-            nturn += 1
-            yield game
-        self.last_game_state = game
-        self.winner = game.winner()
-        return game
-
-
-    def run(self, game:Game, p1, p2, p1_first:bool=True, max_num_turns=1000) -> Game:
-        timers = {
-            "choose": 0,
-            "register": 0
-        }
-        
-        nturn = 0
-        turn = p1_first
-        def next_actions():
-            if turn: return p1.player, p1.play(game)
-            else: return p2.player, p2.play(game)
-
-        while game.winner() is None and nturn < max_num_turns:
-            kind, actions = next_actions()
-            game.register_actions(kind, actions)
-            turn = not turn
-            nturn += 1
-            t3 = time()
-        return game
 
 
 if __name__ == "__main__":
