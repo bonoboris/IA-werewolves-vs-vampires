@@ -11,7 +11,7 @@ from typing import Tuple, Iterator, List, Iterable
 from anytree import Node, RenderTree
 from copy import deepcopy
 from itertools import combinations, product, chain
-import numpy as np
+import random
 
 
 def print_tree(root):
@@ -25,7 +25,7 @@ def print_tree(root):
 class State:
     move_vector = [(dx, dy) for dx in [-1, 0, 1] for dy in [-1, 0, 1]]
 
-    def __init__(self, this_board: Game, next_player: int, this_move: List[Tuple[int, int, int, int, int]] = None):
+    def __init__(self, this_board: Game, next_player: int, this_move: List[Tuple[int, int, int, int, int]] = []):
         """
 
         :param this_move: the move which leads to this_board
@@ -44,7 +44,7 @@ class State:
             if next_turn is not None:
                 yield State(next_turn, next_player, possible_move)
 
-    def explore_possibilities(self, max_divide: int = 3, min_troop: int = 3) \
+    def explore_possibilities(self, max_divide: int = 2, min_troop: int = 3) \
             -> Iterator[List[Tuple[int, int, int, int, int]]]:
         """
         Iterate on combinations of all possibilities of moves of each troop under param constraints
@@ -113,7 +113,7 @@ class State:
                     print("Cannot move enemy's chess.")
                     return None
             if (xp, yp) in troop_source:
-                print("A troop can only be source or target at the same time")
+                # print("A troop can only be source or target at the same time")
                 return None
 
             if new_state[x, y][1] - popu <= 0:
@@ -169,17 +169,20 @@ class State:
 
     def heuristic(self) -> int:
         # random battle remained to be considered
-        us = Game.Werewolf + Game.Vampire - self.next_player
-        our_army = self.game.vampires() if self.next_player == Game.Werewolf else self.game.werewolves()
-        their_army = self.game.vampires() if self.next_player == Game.Vampire else self.game.werewolves()
+        # us = Game.Werewolf + Game.Vampire - self.next_player
+        # our_army = self.game.vampires() if self.next_player == Game.Werewolf else self.game.werewolves()
+        # their_army = self.game.vampires() if self.next_player == Game.Vampire else self.game.werewolves()
+        us = Game.Vampire
+        our_army = self.game.vampires()
+        their_army = self.game.werewolves()
         our_army = list(our_army)
         their_army = list(their_army)
         human_army = list(self.game.humans())
 
         dmax = max(self.game.size())
         heuristic = dmax * 30 * (self.game.vampire_pop() - self.game.werewolf_pop())  # us - them
-        if self.next_player == Game.Vampire:
-            heuristic = -heuristic
+        # if self.next_player == Game.Vampire:
+        #     heuristic = -heuristic
         d_hum_us = self.__distance_to_human(our_army, human_army, dmax)
         d_hum_them = self.__distance_to_human(their_army, human_army, dmax)
         heuristic += 20 * (3 * d_hum_us - d_hum_them)
@@ -254,11 +257,15 @@ def alpha_beta(node: Node, depth: int, alpha: float, beta: float, maximizing_pla
         return chosen_child, score
 
 
-def make_move(init_game: Game, who_plays: int, depth: int = 2):
-    root = Node(State(init_game, who_plays))
+def make_move(init_game: Game, who_plays: int, depth: int = 5):
+    root_state = State(init_game, who_plays)
+    root = Node(root_state)
     best_choice, alpha_beta_value = alpha_beta(root, depth=depth,
                                                alpha=-math.inf, beta=math.inf, maximizing_player=True)
     print_tree(root)
+    if not best_choice.name.move:
+        random_choice = random.choice([c for c in root_state.expand_tree() if c.move])
+        return random_choice.game, ['MOV', len(random_choice.move), random_choice.move]
     return best_choice.name.game, ["MOV", len(best_choice.name.move), best_choice.name.move]
 
 
