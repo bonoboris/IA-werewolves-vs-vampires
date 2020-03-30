@@ -40,9 +40,9 @@ class State:
         next_player = Game.Werewolf + Game.Vampire - self.next_player
 
         for possible_move in self.explore_possibilities():
-            next_turn = self.move_on_board(possible_move)
+            eat_human, next_turn = self.move_on_board(possible_move)
             if next_turn is not None:
-                yield State(next_turn, next_player, possible_move)
+                yield eat_human, State(next_turn, next_player, possible_move)
 
     def explore_possibilities(self, max_divide: int = 2, min_troop: int = 3) \
             -> Iterator[List[Tuple[int, int, int, int, int]]]:
@@ -95,11 +95,12 @@ class State:
                     yield [troop_pop] + residual_troop
 
     # to complete
-    def move_on_board(self, mov: List[Tuple[int, int, int, int, int]]) -> Game:
+    def move_on_board(self, mov: List[Tuple[int, int, int, int, int]]) -> Tuple[int, Game]:
         # get board after random battle and chain prohibition
         new_state = deepcopy(self.game)
+        eat_human = 0
         if len(mov) == 0:
-            return self.game
+            return eat_human, self.game
         player = None
         troop_source = []
         for x, y, popu, xp, yp in mov:
@@ -108,13 +109,13 @@ class State:
             else:
                 if player == game.Human:
                     print("Human is not player")
-                    return None
+                    return 0, None
                 if player != self.game[x, y][0]:
                     print("Cannot move enemy's chess.")
-                    return None
+                    return 0, None
             if (xp, yp) in troop_source:
                 # print("A troop can only be source or target at the same time")
-                return None
+                return 0, None
 
             if new_state[x, y][1] - popu <= 0:
                 del new_state[x, y]
@@ -122,13 +123,15 @@ class State:
                 new_state[x, y] = (player, new_state[x, y][1] - popu)
             if self.game[xp, yp] is not None:
                 if player != self.game[xp, yp][0]:
+                    if self.game[xp, yp][0] == Game.Human:
+                        eat_human += self.game[xp, yp][1]
                     new_state[xp, yp] = self.__fake_random_battle((player, popu), self.game[xp, yp])
                 else:
                     new_state[xp, yp] = (player, popu + new_state[xp, yp][1])
             else:
                 new_state[xp, yp] = (player, popu)
             troop_source.append((x, y))
-        return new_state
+        return eat_human, new_state
 
     def __fake_random_battle(self, attacker: Tuple[int, int], defender: Tuple[int, int], threshold: float = 0.6) \
             -> Tuple[int, int]:
@@ -232,7 +235,7 @@ def alpha_beta(node: Node, depth: int, alpha: float, beta: float, maximizing_pla
             return node, 1e9 * state.win_draw_lose()
         score = -math.inf
         chosen_child = node
-        for child in state.expand_tree():
+        for _, child in state.expand_tree():
             c = Node(child, parent=node)
             _, potential_score = alpha_beta(c, depth - 1, alpha, beta, False)
             if potential_score > score:
@@ -246,7 +249,7 @@ def alpha_beta(node: Node, depth: int, alpha: float, beta: float, maximizing_pla
             return node, -1e9 * state.win_draw_lose()
         score = math.inf
         chosen_child = node
-        for child in state.expand_tree():
+        for _, child in state.expand_tree():
             c = Node(child, parent=node)
             _, potential_score = alpha_beta(c, depth - 1, alpha, beta, True)
             if potential_score < score:
@@ -257,23 +260,33 @@ def alpha_beta(node: Node, depth: int, alpha: float, beta: float, maximizing_pla
         return chosen_child, score
 
 
-def make_move(init_game: Game, who_plays: int, depth: int = 5):
+def random_move(state: State):
+    moves_to_eat = [(num_human, c) for num_human, c in state.expand_tree() if (c.move and num_human > 0)]
+    if moves_to_eat:
+        move_to_eat = max(moves_to_eat, key=(lambda x: x[0]))[1]
+        return move_to_eat.game, ['MOV', len(move_to_eat.move), move_to_eat.move]
+    else:
+        random_choice = random.choice([c for _, c in state.expand_tree() if c.move])
+        return random_choice.game, ['MOV', len(random_choice.move), random_choice.move]
+
+
+def make_move(init_game: Game, who_plays: int, depth: int = 4):
     root_state = State(init_game, who_plays)
     root = Node(root_state)
     best_choice, alpha_beta_value = alpha_beta(root, depth=depth,
                                                alpha=-math.inf, beta=math.inf, maximizing_player=True)
     print_tree(root)
     if not best_choice.name.move:
-        random_choice = random.choice([c for c in root_state.expand_tree() if c.move])
-        return random_choice.game, ['MOV', len(random_choice.move), random_choice.move]
+        return random_move(root_state)
     return best_choice.name.game, ["MOV", len(best_choice.name.move), best_choice.name.move]
 
 
 if __name__ == '__main__':
     init_pop = {
-        Game.Human: [[(2, 2), 10]],
-        Game.Vampire: [[(1, 2), 10]],
-        Game.Werewolf: [[(3, 4), 3], [(3, 3), 3], [(4, 3), 4]]
+        Game.Human: [[(4, 2), 1], [(4, 3), 2]],
+        Game.Vampire: [[(3, 3), 3]],
+        # Game.Werewolf: [[(3, 4), 3], [(3, 3), 3], [(4, 3), 4]]
+        Game.Werewolf: [[(2, 2), 8]]
     }
     game = Game(5, 5, init_pop)
 
