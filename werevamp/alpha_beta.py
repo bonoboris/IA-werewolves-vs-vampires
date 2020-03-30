@@ -7,11 +7,12 @@ Created on Sun Mar 1 12:21:31 2020
 from game import Game
 from GameServer import GameServer
 import math
-from typing import Tuple, Iterator, List, Iterable
+from typing import Tuple, Iterator, List, Iterable, Set
 from anytree import Node, RenderTree
 from copy import deepcopy
 from itertools import combinations, product, chain
 import random
+import time
 
 
 def print_tree(root):
@@ -38,60 +39,102 @@ class State:
 
     def expand_tree(self):
         next_player = Game.Werewolf + Game.Vampire - self.next_player
-
-        for possible_move in self.explore_possibilities():
+        army = self.game.werewolves() if self.next_player == Game.Werewolf else self.game.vampires()
+        for possible_move in self.explore_possibilities2(list(army)):
+        # for possible_move in self.explore_possibilities():
             eat_human, next_turn = self.move_on_board(possible_move)
             if next_turn is not None:
                 yield eat_human, State(next_turn, next_player, possible_move)
 
-    def explore_possibilities(self, max_divide: int = 2, min_troop: int = 3) \
+    # def explore_possibilities(self, max_divide: int = 2, min_troop: int = 3) \
+    #         -> Iterator[List[Tuple[int, int, int, int, int]]]:
+    #     """
+    #     Iterate on combinations of all possibilities of moves of each troop under param constraints
+    #     :param max_divide: maximum number one troop can be devided into troops
+    #     :param min_troop: minimum population one troop can have
+    #     :return: list of moves [depart x, depart y, population, arrive x, arrive y]
+    #     """
+    #     max_divide = min(max_divide, 9)
+    #     army = self.game.werewolves() if self.next_player == Game.Werewolf else self.game.vampires()
+    #     potential_of_whole_army = [[] for _ in range(len(army))]
+    #     for i, (x, y, population) in enumerate(army):
+    #         for num_divide in range(1, max_divide + 1):
+    #             if population // min_troop < num_divide:  # cut into too large troops
+    #                 continue
+    #             for division in self.__division(num_divide, min_troop, population):
+    #                 for vector_comb in combinations(State.move_vector, num_divide):
+    #                     possiblility = []
+    #                     for dx, dy in vector_comb:
+    #                         if x + dx >= self.game.m or x + dx < 0 or y + dy >= self.game.n or y + dy < 0:
+    #                             break
+    #                         if dx == 0 and dy == 0:
+    #                             possiblility.append("stay")
+    #                             # print("{0}'s potential move: {1} soldier stay still".format(
+    #                             #     self.next_player, division[len(possiblility)-1]))
+    #                         else:
+    #                             # only consider moves here, do not consider result after random battle
+    #                             # no chain prohibition neither
+    #                             possiblility.append((x, y, division[len(possiblility)], x + dx, y + dy))
+    #                             # print("{0}'s potential move: {1}".format(
+    #                             #     self.next_player, [(x, y, division[len(possiblility)-1], x + dx, y + dy)]))
+    #                     if len(possiblility) == num_divide:
+    #                         if "stay" in possiblility:
+    #                             possiblility.remove("stay")
+    #                         if possiblility:
+    #                             potential_of_whole_army[i].append(possiblility)
+    #     for num_moving in range(1, len(army) + 1):
+    #         for comb_possibility in combinations(potential_of_whole_army, num_moving):
+    #             for possible_move in product(*comb_possibility):
+    #                 yield list(chain(*possible_move))
+
+    def explore_possibilities2(self, army: List[Tuple[int, int, int]], src: Set[Tuple[int, int]] = set(),
+                               max_divide: int = 2, min_troop: int = 3) \
             -> Iterator[List[Tuple[int, int, int, int, int]]]:
         """
         Iterate on combinations of all possibilities of moves of each troop under param constraints
+        :param src:
+        :param army:
         :param max_divide: maximum number one troop can be devided into troops
         :param min_troop: minimum population one troop can have
         :return: list of moves [depart x, depart y, population, arrive x, arrive y]
         """
         max_divide = min(max_divide, 9)
-        army = self.game.werewolves() if self.next_player == Game.Werewolf else self.game.vampires()
-        potential_of_whole_army = [[] for _ in range(len(army))]
-        for i, (x, y, population) in enumerate(army):
-            for num_divide in range(1, max_divide + 1):
-                if population // min_troop < num_divide:  # cut into too large troops
-                    continue
+        if len(army) == 1:
+            x, y, population = army[0]
+            real_num_divide = min(max(population // min_troop, 1), max_divide)
+            for num_divide in range(1, real_num_divide + 1):
                 for division in self.__division(num_divide, min_troop, population):
                     for vector_comb in combinations(State.move_vector, num_divide):
                         possiblility = []
                         for dx, dy in vector_comb:
-                            if x + dx >= self.game.m or x + dx < 0 or y + dy >= self.game.n or y + dy < 0:
+                            if x + dx >= self.game.m or x + dx < 0 or\
+                                    y + dy >= self.game.n or y + dy < 0 or (x + dx, y + dy) in src:
                                 break
                             if dx == 0 and dy == 0:
                                 possiblility.append("stay")
-                                # print("{0}'s potential move: {1} soldier stay still".format(
-                                #     self.next_player, division[len(possiblility)-1]))
                             else:
                                 # only consider moves here, do not consider result after random battle
-                                # no chain prohibition neither
                                 possiblility.append((x, y, division[len(possiblility)], x + dx, y + dy))
-                                # print("{0}'s potential move: {1}".format(
-                                #     self.next_player, [(x, y, division[len(possiblility)-1], x + dx, y + dy)]))
                         if len(possiblility) == num_divide:
                             if "stay" in possiblility:
                                 possiblility.remove("stay")
                             if possiblility:
-                                potential_of_whole_army[i].append(possiblility)
-        for num_moving in range(1, len(army) + 1):
-            for comb_possibility in combinations(potential_of_whole_army, num_moving):
-                for possible_move in product(*comb_possibility):
-                    yield list(chain(*possible_move))
+                                yield possiblility
+        else:
+            for soldier in army:
+                for p in self.explore_possibilities2([soldier], src, max_divide, min_troop):
+                    cibles = [(move[3], move[4]) for move in p]
+                    remain_army = [a for a in army if ((a[0], a[1]) not in cibles and a != soldier)]
+                    new_src = src | {(soldier[0], soldier[1])}
+                    for p_rest in self.explore_possibilities2(remain_army, new_src, max_divide, min_troop):
+                        yield p + p_rest
 
     def __division(self, num_divide, min_troop, population):
         if num_divide == 1:
             yield [population]
         else:
             for troop_pop in range(min_troop, population - min_troop * (num_divide - 1) + 1):
-                residual_troops = self.__division(num_divide - 1, min_troop, population - troop_pop)
-                for residual_troop in residual_troops:
+                for residual_troop in self.__division(num_divide - 1, min_troop, population - troop_pop):
                     yield [troop_pop] + residual_troop
 
     # to complete
@@ -102,7 +145,7 @@ class State:
         if len(mov) == 0:
             return eat_human, self.game
         player = None
-        troop_source = []
+        troop_source = set()
         for x, y, popu, xp, yp in mov:
             if player is None:
                 player = self.game[x, y][0]
@@ -114,9 +157,10 @@ class State:
                     print("Cannot move enemy's chess.")
                     return 0, None
             if (xp, yp) in troop_source:
-                # print("A troop can only be source or target at the same time")
+                print("A troop can only be source or target at the same time")
                 return 0, None
 
+            troop_source.add((x, y))
             if new_state[x, y][1] - popu <= 0:
                 del new_state[x, y]
             else:
@@ -130,7 +174,6 @@ class State:
                     new_state[xp, yp] = (player, popu + new_state[xp, yp][1])
             else:
                 new_state[xp, yp] = (player, popu)
-            troop_source.append((x, y))
         return eat_human, new_state
 
     def __fake_random_battle(self, attacker: Tuple[int, int], defender: Tuple[int, int], threshold: float = 0.6) \
@@ -270,7 +313,7 @@ def random_move(state: State):
         return random_choice.game, ['MOV', len(random_choice.move), random_choice.move]
 
 
-def make_move(init_game: Game, who_plays: int, depth: int = 4):
+def make_move(init_game: Game, who_plays: int, depth: int = 5):
     root_state = State(init_game, who_plays)
     root = Node(root_state)
     best_choice, alpha_beta_value = alpha_beta(root, depth=depth,
@@ -283,15 +326,30 @@ def make_move(init_game: Game, who_plays: int, depth: int = 4):
 
 if __name__ == '__main__':
     init_pop = {
-        Game.Human: [[(4, 2), 1], [(4, 3), 2]],
-        Game.Vampire: [[(3, 3), 3]],
-        # Game.Werewolf: [[(3, 4), 3], [(3, 3), 3], [(4, 3), 4]]
-        Game.Werewolf: [[(2, 2), 8]]
+        Game.Human: [[(2, 4), 2],[(0, 2), 2]],
+        Game.Vampire: [[(4, 4), 10]],
+        Game.Werewolf: [[(0, 0), 10]]
+
     }
     game = Game(5, 5, init_pop)
 
     # s = State(game, Game.Werewolf)
+    sumtime = 0
+    for i in range(10):
+        start = time.time()
+        decision, command = make_move(game, Game.Vampire, depth=5)
+        end = time.time()
+        sumtime += end - start
 
-    decision, command = make_move(game, Game.Vampire)
-    print(decision)
-    print(command)
+    print('time cost = %f s' % (sumtime / 10))
+    #
+    # init_pop = {
+    #     Game.Human: [[(4, 2), 2]],
+    #     Game.Vampire: [[(3, 3), 3],[(2, 3), 3]],
+    #     Game.Werewolf: [[(2, 2), 8]]
+    # }
+    # game = Game(5, 5, init_pop)
+    #
+    # decision, command = make_move(game, Game.Vampire, depth=1)
+    # print(decision)
+    # print(command)
