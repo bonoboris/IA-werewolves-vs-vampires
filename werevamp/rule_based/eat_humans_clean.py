@@ -19,6 +19,24 @@ TUnit = Tuple[int, int, int]
 def dist(c1: Coords, c2: Coords) -> int:
     return max(abs(c1[0] - c2[0]), abs(c1[1] - c2[1]))
 
+
+class RUnit(SimpleRepr):
+    def __init__(self, id:int, coords:int, num:int, r:int=0, created_at_state:int=0, disappear_at_state:Optional[int]=None):
+        self.id = id
+        self.coords = coords
+        self.num = num
+        self.r = r
+        self.created_at_state = created_at_state
+    
+    @classmethod
+    def from_unit(cls, unit: TUnit, r=0) -> "RUnit":
+        coords, num = unit[:2], unit[2]
+        return cls(coords, num, r)
+
+    def dist_unit(self, unit: TUnit) -> int:
+        return max(0, dist(self.coords, unit[:2]) - self.r)
+
+
 class RUnitManager(SimpleRepr): 
     def __init__(self, unit_iterable: Iterable[TUnit]):
         self._id_gen_cnt = 0
@@ -41,22 +59,6 @@ class RUnitManager(SimpleRepr):
         ret = self._id_gen_cnt
         self._id_gen_cnt += 1
         return ret
-
-class RUnit(SimpleRepr):
-    def __init__(self, id:int, coords:int, num:int, r:int=0, created_at_state:int=0, disappear_at_state:Optional[int]=None):
-        self.id = id
-        self.coords = coords
-        self.num = num
-        self.r = r
-        self.created_at_state = created_at_state
-    
-    @classmethod
-    def from_unit(cls, unit: TUnit, r=0) -> "RUnit":
-        coords, num = unit[:2], unit[2]
-        return cls(coords, num, r)
-
-    def dist_unit(self, unit: TUnit) -> int:
-        return max(0, dist(self.coords, unit[:2]) - self.r)
 
 
 def next_step(rum: RUnitManager, humans: Sequence[TUnit]):
@@ -128,3 +130,6 @@ def next_step(rum: RUnitManager, humans: Sequence[TUnit]):
             pprint(tval)
             raise
     return (new_runits, new_humans), (target, dist, attackers)
+
+
+if __name__ == "__main__":

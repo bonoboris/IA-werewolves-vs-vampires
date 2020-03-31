@@ -6,7 +6,7 @@ from werevamp.game_gen import SymGameGenerator
 from werevamp.game import GamePlotter, Game, GameRunner
 from werevamp.dummy import Dummy
 from werevamp.cnn import PlayerCNN
-
+from werevamp.rule_based.player import Player as PlayerRB
 
 
 def plot_game(game:Game, p1, p2, delay=1., p1_first:bool=True, num_max_turns=100):

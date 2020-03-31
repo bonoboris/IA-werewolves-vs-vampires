@@ -26,6 +26,11 @@ class Action(NamedTuple, SimpleRepr):
         return self.dest_i, self.dest_j
 
 
+def action_to_mov_command(actions: List[Action]):
+    action_tuples = [(*action.start(), action.num, *action.dest()) for action in actions]
+    return ['MOV', len(action), action_tuples]
+
+
 class Game(dict):
     """Game state and usefull methods.
 
@@ -37,6 +42,13 @@ class Game(dict):
     Vampire = 0
     Werewolf = 1
     Human = 2
+
+    _xml_header: str = '<?xml version="1.0" encoding="utf-8" ?>\n'
+    _xml_map_open_template:str = '<Map Rows="{shape[0]}" Columns="{shape[1]}">\n'
+    _xml_humans_template:str = '  <Humans X="{t[0]}" Y="{t[1]}" Count="{t[2]}"/>\n'
+    _xml_werewolves_template: str = '  <Werewolves X="{t[0]}" Y="{t[1]}" Count="{t[2]}"/>\n'
+    _xml_vampires_template: str = '  <Vampires X="{t[0]}" Y="{t[1]}" Count="{t[2]}"/>\n'
+    _xml_map_close: str = '</Map>'
 
     # ------ Public Methods ------
 
@@ -161,7 +173,7 @@ class Game(dict):
     @staticmethod
     def fight_human(num_att, num_hum):
         r = num_att / num_hum
-        if r > 1:
+        if r >= 1:
             return True, num_att + num_hum
         else:
             p = np.random.random()
@@ -173,6 +185,8 @@ class Game(dict):
 
     def register_actions(self, kind: int, actions:List[Action]):
         if not actions:
+            print("No actions")
+            return
             raise ValueError("At least one action must be provided!")
         self.check_actions(kind, actions)
         grouped_dests = defaultdict(int)
@@ -203,6 +217,7 @@ class Game(dict):
         for action in actions:
             self.check_action(action, kind)
             if action.start() in dests or action.dest() in starts:
+                print(actions)
                 raise ValueError("Invalid actions: a square cannot send and receive units in the same turn")
             if action.start() in starts:
                 raise ValueError("A square cannot send units to multiple square at the same turn")
@@ -303,6 +318,21 @@ class Game(dict):
         if not isinstance(i, Integral) or not isinstance(j, Integral):
             raise err_type(f"Expected a pair of int, got: {v}")
         return i, j
+    
+    def to_xml(self):
+        xml_content = self._xml_header
+        xml_content += self._xml_map_open_template.format(shape=self.size())
+        for t in self.humans():
+            xml_content += self._xml_humans_template.format(t=t)
+        for t in self.werewolves():
+            xml_content += self._xml_werewolves_template.format(t=t)        
+        for t in self.vampires():
+            xml_content += self._xml_vampires_template.format(t=t)
+        xml_content += self._xml_map_close
+
+        with open("map.xml", "w", encoding="utf8") as file:
+            file.write(xml_content)
+
 
 class GamePlotter():
     def __init__(self, game: Game = None, influence:Optional = None):

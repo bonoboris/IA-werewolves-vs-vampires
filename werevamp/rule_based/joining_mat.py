@@ -19,6 +19,9 @@ def dist_inf(c1: Coords, c2: Coords, val) -> int:
             c1[1] >= c2[1] - val and
             c1[1] <= c2[1] + val)
 
+def iter_except(it: Iterable, idx: int):
+    return (val for i, val in enumerate(it) if idx != i)
+
 class LazyJoiningMat:
     def __init__(self, game:Game, faction: int) -> None:
         self.vals: Dict[IVec3D, int] = dict()
@@ -65,10 +68,6 @@ class LazyJoiningMat:
         HF = {}
         for h in H:
             HF[h] = {f for f in F if self.faction_human_dist[f][h] + Hc_dist[h] <= s}
-        print("Hc_dist", Hc_dist)
-        print("F", F)
-        print("H", H)
-        print("HF", HF)
 
         # dict:
         #   key: a human at s step or less
@@ -80,12 +79,11 @@ class LazyJoiningMat:
             it = SubsetIter(HF[h])
             for comb in it:
                 tot_fnum = sum((self.funits[f][2] for f in comb))
-                print("*", comb, tot_fnum)
+                # print("*", comb, tot_fnum)
                 if tot_fnum > hnum:
                     HPFh.append(comb)
                     it.exclude()
             HPF[h] = HPFh
-        print("HPF", HPF)
 
         # Assign subsets of self.faction units to eat as many humans possible before going to (i,j) in s step or less 
         max_hum = 0
@@ -107,13 +105,80 @@ class LazyJoiningMat:
             for k, h in enumerate(H):
                 if max_assign[k]:
                     assign[self.hunits[h]] = [self.funits[f] for f in max_assign[k]]
-            print("human accounted !")
-            print(f"s,i,j = {s},{i},{j}")
-            print("assign", assign)
+            # print("human accounted !")
+            # print(f"s,i,j = {s},{i},{j}")
+            # print("assign", assign)
         val = max_hum + sum((self.funits[f][2] for f in F))
         self.vals[idx] = val
         return val
+
+
+    def can_eat_in(self, steps, target):
+        """With `idx`=(s,i,j), compute the maximum number of `self.faction` units which can go to square (i,j) in s steps accounting for eaten humans on the way."""
+        s = steps
+        i,j = self.hunits[target][:2]
         
+        # distance between humains and (i,j)
+        Hc_dist = [dist((hi, hj), (i, j)) for hi, hj, _ in self.hunits]
+
+        # self.faction units at s step or less from (i,j)
+        F = [k for k, (fi, fj, _) in enumerate(self.funits) if dist_inf((fi, fj), (i,j), s)]
+
+        # humans at s step or less from (i,j)
+        H = [k for k, (hi, hj, _) in enumerate(self.hunits) if Hc_dist[k] <= s and k != target]
+
+        # dict:
+        #   key: a human at s step or less
+        #   value: set of self.faction units which can go to key coords and then to (i,j) in s step or less
+        HF = {}
+        for h in H:
+            HF[h] = {f for f in F if self.faction_human_dist[f][h] + Hc_dist[h] <= s}
+
+
+        # dict:
+        #   key: a human at s step or less
+        #   value: set of subset of self.faction units which can go to key coords and then to (i,j) in s step or less and are enough to eat the humans
+        HPF = {}
+        for h in H:
+            HPFh = [set()]
+            hnum = self.hunits[h][2]
+            it = SubsetIter(HF[h])
+            for comb in it:
+                tot_fnum = sum((self.funits[f][2] for f in comb))
+                # print("*", comb, tot_fnum)
+                if tot_fnum > hnum:
+                    HPFh.append(comb)
+                    it.exclude()
+            HPF[h] = HPFh
+
+
+        # Assign subsets of self.faction units to eat as many humans possible before going to (i,j) in s step or less 
+        max_hum = 0
+        max_assign = None
+        for PF_list in product(*(HPF[h] for h in H)):
+            union = set().union(*PF_list)
+            if len(union) < sum(map(len, PF_list)):
+                continue
+            else:
+                non_empty = (h for k, h in enumerate(H) if PF_list[k])
+                hum = sum((self.hunits[h][2] for h in non_empty))
+                if hum > max_hum:
+                    max_hum = hum
+                    max_assign = PF_list
+        
+        # Final value all self.faction units at s step or less plus the eaten humans
+        if max_hum > 0:
+            assign = {}
+            for k, h in enumerate(H):
+                if max_assign[k]:
+                    assign[self.hunits[h]] = [self.funits[f] for f in max_assign[k]]
+            # print("human accounted !")
+            # print(f"s,i,j = {s},{i},{j}")
+            # print("assign", assign)
+        val = max_hum + sum((self.funits[f][2] for f in F))
+        return val
+
+
 
 
     def keys(self, step: Optional[int] = None) -> Iterable[IVec3D]:
@@ -199,5 +264,5 @@ if __name__ == "__main__":
     game[19,18] = Game.Human, 11
     game[16,3] = Game.Werewolf, 31
 
-    indices = [(8,20,10), (9,19,9)]
+    indices = [(8,20,10), (9,20,10), (100,20,10), (9,19,9)]
     Plotter(Runner(game, indices, 50))

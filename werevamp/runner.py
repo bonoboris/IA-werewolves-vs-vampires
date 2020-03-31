@@ -129,10 +129,12 @@ class BaseRunner(INavigableGameStates):
 
     def run(self, max_turns:int=-1, break_if_winner=True) -> Game:
         """Compute all states until either one of the player wins or the turn limit is reached."""
-        if max_turns < 0: max_turns = inf
+        if max_turns < 0:
+            max_turns = inf
         while self.turn_count < max_turns:
             new_state = self.generate()
-            if break_if_winner and new_state.winner is not None:
+            if break_if_winner and new_state.winner() is not None:
+                print("Winer")
                 break
         return self.last_state
 
@@ -142,7 +144,7 @@ class BaseRunner(INavigableGameStates):
         while self.turn_count < max_turns:
             new_state = self.generate()
             yield new_state
-            if break_if_winner and new_state.winner is not None:
+            if break_if_winner and new_state.winner() is not None:
                 break
         return self.last_state
 
@@ -170,7 +172,6 @@ class GameRunner2(BaseRunner):
         new_game = deepcopy(self.last_state)
         player = self.player1 if self.player1_turn else self.player2
         new_game.register_actions(player.faction, player.play(self.last_state))
-        self.history.append_inc(new_game)
         self.player1_turn = not self.player1_turn 
         return new_game
 

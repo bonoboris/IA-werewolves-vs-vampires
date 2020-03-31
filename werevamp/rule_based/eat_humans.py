@@ -5,13 +5,18 @@ from pprint import pprint
 from math import inf
 from functools import total_ordering
 import copy as cp
+from time import time
+import random as rd
 
-from ..game import Game
+import numpy as np
+
+from ..game import Game, Action
 from ..runner import GameHistory
 from ..plotting import ButtonGamePlotter
-from ..utils import Coords, min_argmin, find
+from ..utils import Coords, min_argmin, find, get_adj_case
 from ..str_utils import SimpleRepr
 from .simplepath import simple_path
+from .joining_mat import LazyJoiningMat
 
 
 TUnit = Tuple[int, int, int]
@@ -26,6 +31,37 @@ def dist_inf(c1: Coords, c2: Coords, val) -> int:
             c1[0] <= c2[0] + val and 
             c1[1] >= c2[1] - val and
             c1[1] <= c2[1] + val)
+
+
+def closer(shape: Coords, from_case: Coords, to_case: Coords, forbidden=set()):
+    adjs = [c for c in get_adj_case(shape, from_case) if c not in forbidden]
+    if not adjs:
+        # print(shape, from_case, to_case, forbidden)
+        return [from_case]
+    adjs_dist = [dist(c, to_case) for c in adjs]
+    return [adjs[i] for i in min_argmin(adjs_dist)[1]]
+
+
+def next_case(shape: Coords, from_case: Coords, to_case: Coords, influence = None, forbidden:Sequence[Coords] = set()):
+    # print(f"next_case(shape={shape}, from_case={from_case}, to_case={to_case}, influence={influence}, forbidden={forbidden}")
+    if from_case == to_case:
+        return to_case
+    return max_inluence_or_rd(closer(shape, from_case, to_case, forbidden), influence)
+
+
+def max_inluence_or_rd(seq: Sequence[Coords], influence=None):
+    if len(seq) == 0:
+        raise ValueError("Cannot select point from an empty sequence")
+    
+    if influence is not None:
+        max_infl, ret = -inf, None
+        for c in seq:
+            infl = influence[c]
+            if infl > max_infl:
+                max_infl, ret = infl, c
+    else:
+        ret = rd.choice(seq)
+    return ret
 
 
 class RUnit(SimpleRepr):
@@ -72,25 +108,26 @@ class Shared():
 
 
 
-def _eat(runits: Sequence[RUnit], human: TUnit, r):
-    human_coords = human[:2]
-    human_num = human[2]
-    sum_units_num = sum((u.num for u in runits))
-    if sum_units_num == human_num:
-        return [RUnit(human_coords, 2*human_num, 0)]
-    else:
-        new_units_sups = {}
-        for u in runits:
-            nu = RUnit(u.coords, max(0, human_num - u.num), r)
-            nu_sup = u.num - nu.num
-            new_units_sups[nu] = nu_sup
-        Shared(sum_units_num - human_num, new_units_sups)
-        new_units = list(new_units_sups)
-        new_units.append(RUnit(human_coords, 2*human_num, 0))
-        return new_units
+# def _eat(runits: Sequence[RUnit], human: TUnit, r):
+#     human_coords = human[:2]
+#     human_num = human[2]
+#     sum_units_num = sum((u.num for u in runits))
+#     if sum_units_num == human_num:
+#         return [RUnit(human_coords, 2*human_num, 0)]
+#     else:
+#         new_units_sups = {}
+#         for u in runits:
+#             nu = RUnit(u.coords, max(0, human_num - u.num), r)
+#             nu_sup = u.num - nu.num
+#             new_units_sups[nu] = nu_sup
+#         Shared(sum_units_num - human_num, new_units_sups)
+#         new_units = list(new_units_sups)
+#         new_units.append(RUnit(human_coords, 2*human_num, 0))
+#         return new_units
 
 
-def next_step(runits: Sequence[RUnit], humans: Sequence[TUnit]):
+def next_step(runits: Sequence[RUnit], humans: Sequence[TUnit], joining_mat: LazyJoiningMat, cur_step:int):
+    # print("cur step", cur_step)
     # print("humans:")
     # pprint(humans)
     # print("runits:")
@@ -103,13 +140,20 @@ def next_step(runits: Sequence[RUnit], humans: Sequence[TUnit]):
     # mat len(humans) * len(runits):
     #   row [h]: sorted len(runits) * 2-tuple (dist(h, u), u) where u is a unit index 
     hu_sorted = [
-        list(sorted(((d, u) for u, d in enumerate(dist_hrow))))
-        for dist_hrow in dist_hu
+        # list(sorted(((d, u) for u, d in enumerate(dist_hrow))))
+        # for dist_hrow in dist_hu
     ]
-    # pprint(hu_sorted)
+
+    for h, dist_hrow in enumerate(dist_hu):
+        hu_sorted.append(list(sorted(
+            ((d, u) for u, d in enumerate(dist_hrow) if joining_mat.can_eat_in(d+cur_step, h) < humans[h][2])
+        )))
+
     # list: len(humans) * 2-tuple: 
     h_steps = []
+    ret_none = True
     for h, row in enumerate(hu_sorted):
+        val = None
         human_num = humans[h][2]
         cands = []
         cands_num = 0
@@ -117,14 +161,25 @@ def next_step(runits: Sequence[RUnit], humans: Sequence[TUnit]):
             cands.append(u)
             cands_num += runits[u].num
             if cands_num >= human_num:
-                h_steps.append((d, cands))
+                val = (d, cands)
+                ret_none = False
                 break
+        h_steps.append(val)
     # print("h_steps")
+    # print("*uneatable ", [humans[h] for h, val in enumerate(h_steps) if val is None])
     # pprint(h_steps)
-    ret =  min_argmin(h_steps)
-    (dist, attackers), targets = ret
-    if len(targets) > 1: print("multiple targets ", targets)
-    target = targets[0]
+    if ret_none:
+        return None
+    dist, attackers, target = inf, None, None
+    # pprint(h_steps)
+    for h, val in enumerate(h_steps):
+        if val is not None:
+            (d, att) = val
+            if d < dist:
+                dist = d
+                attackers = att
+                target = h
+
     # print(f"target {target} | attackers {attackers} | dist {dist}")
     tval = humans[target]
   
@@ -160,10 +215,11 @@ def next_step(runits: Sequence[RUnit], humans: Sequence[TUnit]):
             print("state")
             pprint(runits)
             pprint(humans)
+            print("hu_sorted")
+            pprint(hu_sorted)
             print("h_steps")
             pprint(h_steps)
             print("ret min_argmin & dist")
-            pprint(ret)
             pprint(dist)
             print("unit too far and human")
             pprint(runits[u])
@@ -172,18 +228,40 @@ def next_step(runits: Sequence[RUnit], humans: Sequence[TUnit]):
     return (new_runits, new_humans), (target, dist, attackers)
 
 
-def glouton(units: Sequence[TUnit], humans: Sequence[TUnit]):
+def make_rgame(shape, humans, enemy_faction, enemies):
+    g = Game(*shape)
+    for i,j,num in humans:
+        g[i,j] = Game.Human, num
+    for i,j,num in enemies:
+        g[i,j] = enemy_faction, num
+    return g
+
+
+def glouton(game: Game, faction:int):
     """Increasingly find best eating strategy"""
-    runits = [RUnit.from_unit(u) for u in units]
+    runits = [RUnit.from_unit(u) for u in game.units(faction)]
+    humans = list(game.humans())
 
     state = (runits, humans)
     states = [state]
     actions = []
-
+    sum_step = 0
+    enemy_faction = Game.enemy_faction(faction)
+    enemies = list(game.units(enemy_faction))
+    it = 1
     while state[1]:
-        state, action = next_step(*state)
+        # print("* Iter", it)
+        rgame = make_rgame(game.size(), state[1], enemy_faction, enemies)
+        joining_mat = LazyJoiningMat(rgame, enemy_faction)
+        ret = next_step(*state, joining_mat=joining_mat, cur_step=sum_step)
+        if ret is None:
+            # print("uneatable humans ", state[1])
+            break
+        state, action = ret
+        sum_step += action[1]
         states.append(state)
         actions.append(action)
+        it +=1
     
     # pprint(states[0])
     # for a, s in zip(actions, states[1:]):
@@ -204,7 +282,7 @@ def find_rems(states, actions):
 
 
 
-def transfo_ids(states, actions):
+def transfo(shape, states, actions, forbidden=set(), influence=None):
     state_has_rem = find_rems(states, actions)
     id_cnt = 0
     coords_id = dict()
@@ -216,8 +294,8 @@ def transfo_ids(states, actions):
     rem_parents = dict()
     for i, (runits, _) in enumerate(states):
         if i in state_has_rem:
-            rem_parents[id_cnt] = coords_id[runits[-2].coords] 
-            del coords_id[runits[-2].coords] 
+            rem_parents[id_cnt] = coords_id[runits[-2].coords]
+            del coords_id[runits[-2].coords]
         runits_id = []
         for ru in runits:
             if ru.coords in coords_id:
@@ -235,37 +313,10 @@ def transfo_ids(states, actions):
                 disappear_state[id_] = i
         state_runit_ids.append(runits_id)
 
-
-def transfo(shape, states, actions):
-    state_has_rem = find_rems(states, actions)
-    id_cnt = 0
-    coords_id = dict()
-    id_runit = dict()
-    state_runit_ids = list()
-    appear_state = dict()
-    disappear_state = dict()
-    dests = dict()
-    rem_parents = dict()
-    for i, (runits, _) in enumerate(states):
-        if i in state_has_rem:
-            rem_parents[id_cnt] = coords_id[runits[-2].coords] 
-            del coords_id[runits[-2].coords] 
-        runits_id = []
-        for ru in runits:
-            if ru.coords in coords_id:
-                id_ = coords_id[ru.coords]
-            else:
-                id_ = id_cnt
-                id_cnt += 1
-                coords_id[ru.coords] = id_
-                id_runit[id_] = ru
-                appear_state[id_] = i
-            runits_id.append(id_)
-        if i > 0:
-            dests[i] = runits[-1].coords
-            for id_ in set(state_runit_ids[-1]).difference(runits_id):
-                disappear_state[id_] = i
-        state_runit_ids.append(runits_id)
+    rem_to_remove = set(rem_parents).union(set(disappear_state))
+    (id_runit, state_runit_ids, appear_state,
+    disappear_state, rem_parents, state_has_rem) = filter_rem(id_runit, state_runit_ids, appear_state,
+                                                              disappear_state, rem_parents, state_has_rem)
 
     state_steps = [0]
     for _, steps, _ in actions:
@@ -278,52 +329,138 @@ def transfo(shape, states, actions):
     # print(state_steps)
     num_steps = state_steps[-1] + 1
     # print("num_steps", num_steps)
-    traces = []
-    for id_ in range(id_cnt):
+    traces = dict()
+    moving = dict()
+    merge_dest = median_point([id_runit[id_].coords for id_ in state_runit_ids[0]])
+    _forbidden = set(forbidden)
+    for id_ in sorted(id_runit):
         appear_step = state_steps[appear_state[id_]]
         if id_ in rem_parents:
-            trace_par = traces[rem_parents[id_]]
-            start_par = find(trace_par, lambda el: el is not None)
-            # print("*", start_par)
-            appear_step = start_par + find(trace_par[start_par: ], lambda el: el != trace_par[start_par])
-            # print("**", appear_step)
+            if rem_parents[id_] not in traces:
+                continue
+            else:
+                trace_par = traces[rem_parents[id_]]
+                if trace_par[0] is None or len(trace_par) == 2:
+                    continue
+                appear_step = 1
+        if appear_step > 1:
+            continue
         trace = [None] * appear_step
-
         start =  id_runit[id_].coords
-        dest = None
         num = id_runit[id_].num
-        path_num = num
-        for id_rem, id_par in rem_parents.items():
-            if id_ == id_par:
-                path_num -= id_runit[id_rem].num
-        # print("start", start)
-        if id_ not in disappear_state: # stay in place
-            trace += [(start, num)] * (num_steps - len(trace))
+        if appear_step == 1:
+            # print(f"id {id_} appears")
+            trace = [None, (start, num)]
         else:
-            dest = dests[disappear_state[id_]]
-            # print("dest", dest)
-            disappear_step = state_steps[disappear_state[id_]]
-            path = simple_path(start, dest)
-            waiting_steps = disappear_step - appear_step - len(path) + 1
-            if waiting_steps < 1:
-                print(f"Error ? waiting_steps={waiting_steps}")
-            trace += [(start, num)] * waiting_steps
-            trace.extend(((coord, path_num) for coord in path[:-1]))
-            trace += [None] * (num_steps - len(trace))
-        if len(trace) != num_steps:
-            print(f"len trace = {len(trace)} expected {num_steps}")
-            print(f"is_rem {id_ in rem_parents} appear_state {appear_state[id_]}, disappear_state {disappear_state.get(id_, None)}, start {start}, dest {dest}")
-            print(trace)
-        traces.append(trace)
-    # pprint(state_runit_ids)
-    # pprint(state_steps)
-    # pprint(appear_state)
-    # pprint(disappear_state)
-    # pprint(rem_parents)
-    
-    # pprint(traces)
+            trace = [(start, num)]
+            if id_ not in disappear_state: # move toward merge dest 
+                # print(f"id {id_} merging toward {merge_dest}")
+                if start == merge_dest:
+                    trace.append((start, num))
+                else:
+                    moving[id_] = (start, merge_dest, num)
+                    _forbidden.add(start)
+            else:
+                dest = dests[disappear_state[id_]]
+                disappear_step = state_steps[disappear_state[id_]]
+                num_start_steps = disappear_step - appear_step - dist(start, dest) + 1
+                if num_start_steps < 1:
+                    print(f"Error ? num_start_steps={num_start_steps}")
+                elif num_start_steps > 1:
+                    # print(f"id {id_} moving later")
+                    trace.append((start, num))
+                else:
+                    # print(f"id {id_} moving now")
+                    move_num = num
+                    for id_rem, id_parent in rem_parents.items():
+                        if id_ == id_parent:
+                            move_num -= id_runit[id_rem].num
+                    adj_case = get_adj_case(shape, start)
+                    moving[id_] = (start, dest, move_num)
+                    _forbidden.add(start)
+        traces[id_] = trace
+    for id_, (start, dest, move_num) in moving.items():
+        ncase = next_case(shape, start, dest, influence, _forbidden)
+        if ncase == start:
+            print(shape, start, dest, [id_runit[id_].coords for id_ in state_runit_ids[0]])
+        traces[id_].append((ncase, move_num))
 
-    for s in range(state_steps[-1] + 1):
+    # print(traces)
+    unit_eaten = {id_:state_runit_ids[state_num][-1] for id_, state_num in disappear_state.items()}
+    return traces_to_actions(traces, unit_eaten, rem_parents)
+    # yield from traces_to_game_gen(shape, states, state_steps, traces)
+
+
+def max_inlf_coords(influence: np.ndarray):
+    m,n = influence.shape
+    midx = np.argmax(influence)
+    mi, mj = midx // n, midx % n
+    return mi, mj
+
+def median_point(coords: Coords):
+    return tuple(map(round, np.median(coords, axis=0).tolist()))
+
+
+def filter_rem(id_runit, state_runit_ids, appear_state, disappear_state, rem_parents, state_has_rem):
+    rem_to_remove = {id_ for id_ in rem_parents if id_ not in disappear_state}
+
+    new_state_runit_ids = []
+    new_id_runit = {id_: v for id_, v in id_runit.items() if id_ not in rem_to_remove}
+    new_state_has_rem = cp.deepcopy(state_has_rem)
+    new_appear_state = {id_: v for id_, v in appear_state.items() if id_ not in rem_to_remove}
+    new_disappear_state = {id_: v for id_, v in disappear_state.items() if id_ not in rem_to_remove}
+    new_rem_parents = {id_: v for id_, v in rem_parents.items() if id_ not in rem_to_remove}
+
+    # print(state_has_rem)
+
+    to_increase = defaultdict(int)
+    for rem in rem_to_remove:
+        rem_num = id_runit[rem].num
+        state_num = appear_state[rem]
+        # print(state_num)
+        new_state_has_rem.remove(state_num)
+        while True:
+            combine_to = state_runit_ids[state_num][-1]
+            to_increase[combine_to] += rem_num
+            if combine_to in disappear_state:
+                state_num = disappear_state[combine_to]
+            else:
+                break
+
+    
+    for id_, inc in to_increase.items():
+        new_id_runit[id_].num += inc
+
+    new_state_runit_ids = [[id_ for id_ in row if id_ not in rem_to_remove] for row in state_runit_ids]
+
+    return new_id_runit, new_state_runit_ids, new_appear_state, new_disappear_state, new_rem_parents, new_state_has_rem
+
+
+def traces_to_actions(traces, unit_eaten, rem_parents):
+    actions = list()
+    for id_, trace in traces.items():
+        if trace[0] is not None:
+            start_coords, start_num = trace[0]
+            if trace[1] is not None:
+                dest_coords, dest_num = trace[1]
+                if dest_coords != start_coords:
+                    actions.append(Action(*start_coords, *dest_coords, dest_num))
+            else:
+                dest_coords = traces[unit_eaten[id_]][1][0]
+                child_num = 0
+                for rem, parent in rem_parents.items():
+                    if parent == id_:
+                        if traces[rem][0] is None and traces[rem][1] is not None:
+                            child_num = traces[rem][1][1]
+                    
+                actions.append(Action(*trace[0][0], *dest_coords, start_num - child_num))
+    return actions
+
+
+
+def traces_to_game_gen(shape, states, state_steps, traces):
+    state_steps.append(inf)
+    for s in range(state_steps[-2] + 1):
         gs = Game(*shape)
         ns = find(state_steps, lambda el: el > s)
         if ns > 0:
@@ -333,81 +470,23 @@ def transfo(shape, states, actions):
                 else:
                     raise ValueError("Override")
 
-        for trace in traces:
+        for trace in traces.values():
             if trace[s] is not None:
                 coords, num = trace[s]
                 gs.add_create(coords, (Game.Vampire, num))
-                # if gs[coords] is None:
-                #     gs[coords] = Game.Vampire, num
-                # else:
-                #     print("overide")
-                #     print(s)
-                #     print(coords, num)
-                #     print(gs[coords])
-                #     gs[coords] = Game.Vampire, num
-                # #     raise ValueError("Override")
         yield gs
-
-
-
-
-def transform_states_actions_to_game_(states, actions):
-    class UnitPath(SimpleRepr):
-        # __slots__= ("start", "step", "dest", "num")
-        def __init__(self, start:Coords=None, step:int=None, dest:Coords=None, num:int=None):
-            self.start = start
-            self.step = step
-            self.dest = dest
-            self.num = num
-        
-        @staticmethod
-        def find_with_coords(coords, seq: Iterable["UnitPath"]) -> "UnitPath":
-            for el in seq:
-                if el.start == coords:
-                    return el
-            return None
-
-    unit_paths: Set[UnitPath] = set() 
-    states_with_rems = find_rems(states, actions)
-    cur_step = 0
-    for idx in range(len(actions)):
-        state = states[idx]
-        runits, humans = state
-        next_state = states[idx+1]
-        next_runits, _ = next_state
-        action = actions[idx]
-        target_idx, steps, attackers_indices = action
-        dest = humans[target_idx]
-        # set attackers path
-        print('num new path', len(attackers_indices))
-        for runit in (runits[u] for u in attackers_indices):
-            unit_paths.add(UnitPath(
-                start=runit.coords,
-                step=cur_step - runit.r,
-                dest=dest,
-                num=runit.num
-            ))
-        cur_step += steps
-        # handle reminder unit if any
-        has_rem = bool(len(next_runits) - len(runits) - len(attackers_indices) + 1)
-        if has_rem:
-            print("has_rem", has_rem)
-            rem_runit = next_runits[-2]
-            # correct num
-            att_up = UnitPath.find_with_coords(rem_runit.coords, unit_paths)
-            att_up.num -= rem_runit.num
-        
-        # add unit path for converted humans unit
-        pprint(unit_paths)
-        print()
 
 
 if __name__ == "__main__":
     from ..game_gen import GameGenerator
-    gg = GameGenerator(30,30, vamp_spread=5, human_spread=5)
+    gg = GameGenerator(30,30, vamp_spread=5, human_spread=5, human_pop=100)
     g = gg()
-    states, actions = glouton(list(g.vampires()), list(g.humans()))
-    # print(find_rem(states, actions))
-    gr = GameHistory(transfo(g.size(), states, actions))
-    ButtonGamePlotter(gr)
-    # transform_states_actions_to_game_(states, actions)
+    g[0,0] = Game.Human, 1000
+    t0 = time()
+    states, actions = glouton(g, Game.Vampire)
+
+    print(transfo(g.size(), states, actions))
+    # gr = GameHistory(transfo(g.size(), states, actions))
+    # t1 = time()
+    # print(f"Elapsed time: {t1-t0:.5f} s")
+    # ButtonGamePlotter(gr)
