@@ -7,12 +7,13 @@ Created on Sun Mar 29 13:06:32 2020
 @author: simed 
 """ 
  
-from client import Client 
-from game import Game 
 import time 
 import sys 
-import numpy as np 
-from alpha_beta import make_move1
+import numpy as np
+
+from werevamp.game import Game 
+from werevamp.client import Client 
+from werevamp.alpha_beta import make_move1
 from werevamp.rule_based.player import Player
 
   

@@ -4,8 +4,8 @@ Created on Sun Mar 1 12:21:31 2020
 
 @author: Jiahao
 """
-from game import Game
-from GameServer import GameServer
+from .game import Game
+from .GameServer import GameServer
 import math
 from typing import Tuple, Iterator, List, Iterable, Set
 from anytree import Node, RenderTree

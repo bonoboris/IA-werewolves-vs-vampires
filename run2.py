@@ -10,6 +10,7 @@ if __name__ == "__main__":
     gg = GameGenerator(20,20, human_spread=8)
     p1 = Player(Game.Vampire, True)
     p2 = Player(Game.Werewolf, True)
+    p1.play()
 
     for i in range(1000):
         print("Game", i+1)
