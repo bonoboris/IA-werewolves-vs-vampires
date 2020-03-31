@@ -1,5 +1,4 @@
 from tabulate import tabulate
-import torch
 import numpy as np
 
 
@@ -14,18 +13,21 @@ class SimpleRepr(object):
         attrs = ", ".join(f"{k}={v!r}" for k, v in vars(self).items() if k not in self.__repr_exclude)
         return f"{klass}({attrs})"
 
-
-class TensorShapeRepr(object):
-    def __repr__(self):
-        klass = self.__class__.__name__
-        attrs = []
-        for k, v in vars(self).items():
-            if isinstance(v, (torch.Tensor, np.ndarray)):
-                attrs.append(f"{k}={v.shape!r}")
-            else:
-                attrs.append(f"{k}={v!r}")
-        attrs = ", ".join(attrs)
-        return f"{klass}({attrs})"
+try: 
+    import torch
+    class TensorShapeRepr(object):
+        def __repr__(self):
+            klass = self.__class__.__name__
+            attrs = []
+            for k, v in vars(self).items():
+                if isinstance(v, (torch.Tensor, np.ndarray)):
+                    attrs.append(f"{k}={v.shape!r}")
+                else:
+                    attrs.append(f"{k}={v!r}")
+            attrs = ", ".join(attrs)
+            return f"{klass}({attrs})"
+except ModuleNotFoundError:
+    pass
 
 
 class ModuleSummary(object):

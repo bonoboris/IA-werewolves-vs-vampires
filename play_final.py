@@ -7,7 +7,6 @@ Created on Tue Mar 31 23:04:42 2020
 import sys
 from werevamp.client import Client
 from play_game import play_one_game
-from play_game_ab import play_one_game_ab
 
 
 if __name__ =='__main__':

@@ -1,7 +1,7 @@
 pygame
 pytest
 numpy
-torch
+matplotlib
 tqdm
 scipy
 tabulate

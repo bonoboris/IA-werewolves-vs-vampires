@@ -13,7 +13,7 @@ import numpy as np
 
 from werevamp.game import Game 
 from werevamp.client import Client 
-from werevamp.alpha_beta import make_move1
+# from werevamp.alpha_beta import make_move1
 from werevamp.rule_based.player import Player
 
 d = {3 : Game.Vampire,
