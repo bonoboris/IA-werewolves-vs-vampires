@@ -33,11 +33,10 @@ class Client():
             'END': self.end_message,
             'BYE': self.bye_message
         }
-        if msg_type == expected:
-            action = switcher.get(msg_type, lambda: self.error)
-            return action()
-        else:
-            print("Encountered error processing message, expected: "+ expected +" but got "+msg_type)
+        action = switcher.get(msg_type, lambda: self.error)
+        return action()
+        # else:
+        #     print("Encountered error processing message, expected: "+ expected +" but got "+msg_type)
 
     def send_message(self, payload):
         if payload[0]=="NME":
@@ -49,7 +48,7 @@ class Client():
             self.connectingSocket.send(payload[0].encode("ascii"))
             n=payload[1]
             self.connectingSocket.send(struct.pack("1B",n))
-            self.connectingSocket.send(struct.pack("{}B".format(5*n), *(payload[2])))
+            self.connectingSocket.send(struct.pack("{}B".format(5*n), *([i for d in payload[2] for i in d])))
             return self.get_message("UPD")
 
     def set_message(self):
@@ -122,11 +121,11 @@ class Client():
 
     def end_message(self):
         print("Game over, resetting data . . .")
-        return 1
+        return 'END'
 
     def bye_message(self):
         print("Connection closing, bye . . .")
-        return 2
+        return 'BYE'
 
     def error(self):
         print('Undocumented error')
