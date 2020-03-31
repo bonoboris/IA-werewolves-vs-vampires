@@ -27,7 +27,7 @@ def play_one_game(init_params, client, *args):
     cont = True 
     if rep ==[]: 
         command = p2.make_move(game) 
-        time.sleep(0.5) 
+        time.sleep(1) 
         rep = client.send_message(command) 
         game = update_game(game, rep, index_player) 
     else: 
@@ -39,8 +39,9 @@ def play_one_game(init_params, client, *args):
         deb=time.time() 
         print('My turn') 
         command = p2.make_move(game) 
-        time.sleep(0.5) 
+        time.sleep(1) 
         rep = client.send_message(command) 
+
         if rep =='END': 
             ans = client.get_message('SET') 
             if ans =='BYE': 

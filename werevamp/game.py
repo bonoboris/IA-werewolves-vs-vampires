@@ -28,7 +28,7 @@ class Action(NamedTuple, SimpleRepr):
 
 def action_to_mov_command(actions: List[Action]):
     action_tuples = [(*action.start(), action.num, *action.dest()) for action in actions]
-    return ['MOV', len(action), action_tuples]
+    return ['MOV', len(actions), action_tuples]
 
 
 class Game(dict):
@@ -95,15 +95,15 @@ class Game(dict):
 
     def humans(self) -> Iterator[Tuple[int, int, int]]:
         """Human units iterator."""
-        return ((*key, val[1]) for key, val in self.items() if val[0]==self.Human)
+        return set((*key, val[1]) for key, val in self.items() if val[0]==self.Human)
 
     def werewolves(self) -> Iterator[Tuple[int, int, int]]:
         """Werewolf units iterator."""
-        return ((*key, val[1]) for key, val in self.items() if val[0]==self.Werewolf)
+        return set((*key, val[1]) for key, val in self.items() if val[0]==self.Werewolf)
 
     def vampires(self) -> Iterator[Tuple[int, int, int]]:
         """Vampires units iterator."""
-        return ((*key, val[1]) for key, val in self.items() if val[0]==self.Vampire)
+        return set((*key, val[1]) for key, val in self.items() if val[0]==self.Vampire)
 
     def units(self, kind:int):
         if kind == Game.Human:

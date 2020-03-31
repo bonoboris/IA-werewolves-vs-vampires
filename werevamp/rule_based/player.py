@@ -9,6 +9,7 @@ class Player():
         self.return_actions = return_actions
     
     def make_move(self, game: Game, faction=None, *args):
+        print(game)
         faction = faction or self.faction
         if faction is None:
             raise ValueError("No value for faction (argument or member)")

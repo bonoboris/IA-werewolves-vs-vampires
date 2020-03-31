@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Map Rows="15" Columns="15">
+  <Humans X="9" Y="11" Count="5"/>
+  <Humans X="14" Y="1" Count="2"/>
+  <Humans X="2" Y="5" Count="4"/>
+  <Humans X="4" Y="3" Count="5"/>
+  <Humans X="0" Y="13" Count="2"/>
+  <Humans X="7" Y="3" Count="4"/>
+  <Humans X="12" Y="9" Count="4"/>
+  <Humans X="10" Y="11" Count="5"/>
+  <Humans X="4" Y="5" Count="5"/>
+  <Humans X="7" Y="11" Count="4"/>
+  <Humans X="5" Y="3" Count="5"/>
+  <Humans X="10" Y="9" Count="5"/>
+  <Werewolves X="9" Y="12" Count="25"/>
+  <Vampires X="5" Y="2" Count="25"/>
+</Map>

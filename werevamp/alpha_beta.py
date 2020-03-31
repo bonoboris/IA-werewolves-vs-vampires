@@ -200,22 +200,44 @@ class State:
                 n_surv = math.floor((1 - p) * defender[1])
                 return defender[0], n_surv
 
-    def __distance_to_human(self, army1: List[Tuple[int, int, int]], harmy: List[Tuple[int, int, int]], dmax: int)\
-            -> int:
-        try:
-            d_all = 0
-            for a in army1:
-                dmin = dmax
-                argmin = 0
-                for k, b in enumerate(harmy):
-                    if a[2] >= b[2]:
-                        d = self.__distance(a, b)
-                        if d <= dmin and b[2] >= harmy[argmin][2]:
-                            dmin = d
-                            argmin = k
-                d_all += (dmax - dmin) * harmy[argmin][2]
-        except:
-            d_all = 0
+    def __distance_to_human(self, army1: List[Tuple[int, int, int]], harmy: List[Tuple[int, int, int]])\
+            -> float:
+        # try:
+        #     d_all = 0
+        #     for a in army1:
+        #         dmin = dmax
+        #         argmin = 0
+        #         for k, b in enumerate(harmy):
+        #             if a[2] >= b[2]:
+        #                 d = self.__distance(a, b)
+        #                 if d <= dmin and b[2] >= harmy[argmin][2]:
+        #                     dmin = d
+        #                     argmin = k
+        #         d_all += (dmax - dmin) * harmy[argmin][2]
+        # except IndexError:
+        #     d_all = 100
+        # return d_all
+        d_all = 0
+        # d_sum = 0
+        if not harmy:
+            return 100
+        if not army1:
+            return -100
+        for h in harmy:
+            d_nearest_us = math.inf
+            nearest_us = army1[0]
+            for u in army1:
+                d = self.__distance(h, u)
+                if d < d_nearest_us:
+                    d_nearest_us = d
+                    nearest_us = u
+                elif d == d_nearest_us:
+                    if u[2] > nearest_us[2]:
+                        nearest_us = u
+            p = nearest_us[2] / (2 * h[2]) if nearest_us[2] < h[2] else 1
+            d_all += (p * p * (nearest_us[2] + h[2]) - nearest_us[2]) / d_nearest_us
+            # d_sum += d_nearest_us**2
+        # return d_all / math.sqrt(d_sum) if d_sum != 0 else d_all
         return d_all
 
     def __distance(self, a: Tuple[int,int,int], b: Tuple[int,int,int]) -> int:
@@ -233,31 +255,32 @@ class State:
         their_army = list(their_army)
         human_army = list(self.game.humans())
 
-        dmax = max(self.game.size())
-        heuristic = dmax * 100 * (self.game.vampire_pop() - self.game.werewolf_pop())  # us - them
-        # if self.next_player == Game.Vampire:
-        #     heuristic = -heuristic
-        d_hum_us = self.__distance_to_human(our_army, human_army, dmax)
-        d_hum_them = self.__distance_to_human(their_army, human_army, dmax)
-        heuristic += 20 * (3 * d_hum_us - d_hum_them)
+        heuristic = (self.game.vampire_pop() / (len(our_army)+1) - self.game.werewolf_pop() / (1+len(their_army)))  # us - them
+        d_hum_us = self.__distance_to_human(our_army, human_army)
+        d_hum_them = self.__distance_to_human(their_army, human_army)
+        if d_hum_us >= d_hum_them:
+            heuristic += d_hum_us
+        else:
+            heuristic -= d_hum_them
+        # d_sum = 0
+        s = 0
         for u in our_army:
-            d_min = dmax
-            enemy_min = (0, 0, 0)
             for enemy in their_army:
-                d = self.__distance(enemy, u)
-                if d < d_min:
-                    d_min = d
-                    enemy_min = enemy
-            winner1, n_survive1 = self.__fake_random_battle((us, u[2]), (self.next_player, enemy_min[2]))
-            winner2, n_survive2 = self.__fake_random_battle((self.next_player, enemy_min[2]), (us, u[2]))
-            f0 = 0
-            if (winner1, n_survive1) == (us, u[2]):
-                f0 = 1
-            elif (winner2, n_survive2) == (self.next_player, enemy_min[2]):
-                f0 = -1
-            f1 = 1 if winner1 == us else -1
-            f2 = 1 if winner2 == us else -1
-            heuristic += 5 * (f0 * 10 * u[2] + f1 * n_survive1 + f2 * n_survive2) * (dmax - d_min)
+                p = u[2] / (2 * enemy[2]) if u[2] <= enemy[2] else min(1.0, u[2] / enemy[2] - 0.5)
+                if p >= 0.7:
+                    s += (enemy[2] - (1 - p) * u[2]) / self.__distance(u, enemy)
+                else:
+                    s -= (enemy[2] - (1 - p) * u[2]) / self.__distance(u, enemy)
+                # d_sum += self.__distance(u, enemy) ** 2
+        # heuristic += s / math.sqrt(d_sum) if d_sum != 0 else s
+        heuristic += s
+        if len(our_army) == 1:
+            heuristic += our_army[0][2] * 1.5
+        else:
+            num_comb = len(list(combinations(our_army, 2)))
+            for i in range(len(our_army) - 1):
+                for j in range(i + 1, len(our_army)):
+                    heuristic += (our_army[i][2] + our_army[j][2]) / self.__distance(our_army[i], our_army[j]) / num_comb
 
         return heuristic
 

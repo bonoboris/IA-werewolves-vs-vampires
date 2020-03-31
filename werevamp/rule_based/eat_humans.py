@@ -126,6 +126,7 @@ class Shared():
 #         return new_units
 
 
+
 def next_step(runits: Sequence[RUnit], humans: Sequence[TUnit], joining_mat: LazyJoiningMat, cur_step:int):
     # print("cur step", cur_step)
     # print("humans:")
@@ -170,15 +171,27 @@ def next_step(runits: Sequence[RUnit], humans: Sequence[TUnit], joining_mat: Laz
     # pprint(h_steps)
     if ret_none:
         return None
-    dist, attackers, target = inf, None, None
+    dist, attackerss, targets = inf, [], []
     # pprint(h_steps)
     for h, val in enumerate(h_steps):
         if val is not None:
             (d, att) = val
             if d < dist:
                 dist = d
-                attackers = att
-                target = h
+                attackerss = [att]
+                targets = [h]
+            elif d == dist:
+                attackerss.append(att)
+                targets.append(h)
+    
+    targets_nums = [humans[h][2] for h in targets]
+    target, target_num_max = -1, -1
+    attackers = []
+    for h, tnum, att in zip(targets, targets_nums, attackerss):
+        if tnum > target_num_max:
+            attackers = att
+            target = h
+            target_num_max = tnum
 
     # print(f"target {target} | attackers {attackers} | dist {dist}")
     tval = humans[target]
@@ -198,7 +211,7 @@ def next_step(runits: Sequence[RUnit], humans: Sequence[TUnit], joining_mat: Laz
     # print("has rem", rem_num > 0)
     if rem_num > 0:
         cop = cp.copy(runits[attackers[-1]])
-        cop.r = dist - 1
+        cop.r = dist
         cop.num = rem_num
         new_runits.append(cop)
     # add new converted human unit
@@ -220,6 +233,7 @@ def next_step(runits: Sequence[RUnit], humans: Sequence[TUnit], joining_mat: Laz
             print("h_steps")
             pprint(h_steps)
             print("ret min_argmin & dist")
+            pprint(target)
             pprint(dist)
             print("unit too far and human")
             pprint(runits[u])
@@ -342,7 +356,7 @@ def transfo(shape, states, actions, forbidden=set(), influence=None):
                 trace_par = traces[rem_parents[id_]]
                 if trace_par[0] is None or len(trace_par) == 2:
                     continue
-                appear_step = 1
+                appear_step = 0
         if appear_step > 1:
             continue
         trace = [None] * appear_step

@@ -3,5 +3,5 @@ from werevamp.game_gen import GameGenerator, SymGameGenerator
 
 
 if __name__ == "__main__":
-    gg = SymGameGenerator(m=20, n=20, players_pop=10, human_pop=20, human_spread=6, sym="x")
+    gg = SymGameGenerator(m=8, n=8, players_pop=20, human_pop=40, human_spread=8, sym="x")
     gg().to_xml()
